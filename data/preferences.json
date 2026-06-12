@@ -1,0 +1,7 @@
+{
+  "_comment": "Brand/size/substitution preferences applied when building carts.",
+  "default_substitution": "ask",
+  "brands": {},
+  "avoid": [],
+  "notes": []
+}

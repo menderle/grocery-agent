@@ -1,0 +1,170 @@
+"""heb-checkout MCP server.
+
+Tools cover the checkout half of the grocery agent (texas-grocery-mcp owns
+search/cart/coupons). Policy is enforced in code in place_order; approval mode,
+spend limits, quiet hours, and order frequency cannot be bypassed by prompting.
+
+Transports:
+  stdio (default)         — local Claude Code / Claude Desktop
+  --http                  — remote access (phone via Cloudflare tunnel); requires
+                            MCP_BEARER_TOKEN, serves /health for the heartbeat.
+"""
+
+import os
+import sys
+from datetime import datetime
+
+from fastmcp import FastMCP
+
+from . import approvals, audit, checkout_driver, config, policy
+from .checkout_driver import parse_dollars
+
+mcp = FastMCP("heb-checkout")
+
+
+@mcp.tool
+def get_policy() -> dict:
+    """Current purchase policy: autonomy mode, spend limits, fulfillment default, plus
+    rolling spend totals and any pending approvals."""
+    history = audit.placed_orders()
+    now = datetime.now()
+
+    def total_since(days: int) -> float:
+        from datetime import timedelta
+        cutoff = now - timedelta(days=days)
+        return sum(o["total"] for o in history if datetime.fromisoformat(o["placed_at"]) >= cutoff)
+
+    return {
+        "policy": policy.load(),
+        "spent_last_7_days": round(total_since(7), 2),
+        "spent_last_30_days": round(total_since(30), 2),
+        "pending_approvals": approvals.pending(),
+    }
+
+
+@mcp.tool
+def set_policy(field: str, value: str) -> dict:
+    """Update a policy setting at the user's request. Settable fields: 'mode'
+    (approve|auto_under_threshold|full_auto), 'auto_threshold', 'fulfillment'
+    (pickup|delivery|ask), 'spend_limits.per_order', 'spend_limits.weekly',
+    'spend_limits.monthly'. Only change these when the user explicitly asks."""
+    updated = policy.update(field, value)
+    return {"updated": field, "policy": updated}
+
+
+@mcp.tool
+async def get_slots(fulfillment: str = "both") -> dict:
+    """Available HEB time slots. fulfillment: 'pickup', 'delivery', or 'both'
+    (side-by-side, for suggesting times against the user's calendar)."""
+    kinds = ["pickup", "delivery"] if fulfillment == "both" else [fulfillment]
+    out = {}
+    for kind in kinds:
+        try:
+            out[kind] = await checkout_driver.get_slots(kind)
+        except Exception as e:  # one fulfillment type failing shouldn't hide the other
+            out[kind] = {"error": str(e)}
+    return out
+
+
+@mcp.tool
+async def preview_order(fulfillment: str = "pickup") -> dict:
+    """Walk the current cart to the final review screen and report itemized total,
+    fees, and the saved payment method. Never places an order, never charges."""
+    rec = audit.new_record("preview", fulfillment=fulfillment)
+    return await checkout_driver.preview(fulfillment, rec["id"])
+
+
+@mcp.tool
+async def place_order(
+    expected_total: float,
+    fulfillment: str = "pickup",
+    slot_text: str | None = None,
+    approval_id: str | None = None,
+) -> dict:
+    """Place the order for the current HEB cart. expected_total: the order total from
+    preview_order (policy evaluates against it, and checkout aborts if the on-screen
+    total comes out >10% higher). slot_text: substring of the chosen slot from
+    get_slots. approval_id: pass when the user has approved a pending order.
+
+    Outcomes: placed | dry_run | needs_approval (returns approval_id to show the
+    user) | blocked (policy; not overridable) | aborted (total mismatch)."""
+    approved = False
+    if approval_id:
+        approval = approvals.consume(approval_id)  # raises if expired/unknown
+        expected_total = approval["order_total"]
+        fulfillment = approval["fulfillment"]
+        slot_text = approval.get("slot_text") or slot_text
+        approved = True
+
+    decision = policy.evaluate(expected_total, approved=approved)
+    if decision.action == "blocked":
+        audit.new_record("blocked", total=expected_total, reason=decision.reason)
+        return {"status": "blocked", "reason": decision.reason}
+    if decision.action == "needs_approval":
+        pol = policy.load()
+        approval = approvals.create(
+            expected_total, fulfillment, slot_text,
+            expiry_hours=pol.get("approval", {}).get("expiry_hours", 4),
+        )
+        audit.new_record("pending_approval", total=expected_total, approval_id=approval["id"])
+        return {
+            "status": "needs_approval",
+            "approval_id": approval["id"],
+            "expires_at": approval["expires_at"],
+            "reason": decision.reason,
+            "next_step": "show the user the cart summary and total; on a yes, call place_order with this approval_id",
+        }
+
+    dry_run = config.dry_run_default()
+    rec = audit.new_record("dry_run" if dry_run else "attempt", total=expected_total,
+                           fulfillment=fulfillment, slot=slot_text, reason=decision.reason)
+    result = await checkout_driver.place(
+        fulfillment, slot_text, rec["id"],
+        dry_run=dry_run, max_total=round(expected_total * 1.10, 2),
+    )
+    if result.get("status") == "placed":
+        final_total = parse_dollars(result.get("order_total")) or expected_total
+        audit.new_record("placed", total=final_total, fulfillment=fulfillment,
+                         slot=slot_text, confirmation=result.get("confirmation"),
+                         attempt_id=rec["id"])
+    return result
+
+
+@mcp.tool
+def order_history(limit: int = 10) -> dict:
+    """Recent checkout activity from the audit log (placed orders, dry runs, blocks)."""
+    return {"records": audit.all_records()[-limit:]}
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request):
+    from starlette.responses import JSONResponse
+    auth = config.auth_state_path()
+    return JSONResponse({
+        "ok": auth.exists(),
+        "heb_session_file": str(auth),
+        "session_file_exists": auth.exists(),
+        "session_file_age_hours": round((datetime.now().timestamp() - auth.stat().st_mtime) / 3600, 1)
+        if auth.exists() else None,
+        "dry_run_mode": config.dry_run_default(),
+    })
+
+
+def main() -> None:
+    if "--http" in sys.argv:
+        token = os.environ.get("MCP_BEARER_TOKEN")
+        if not token or token == "change-me-long-random-string":
+            sys.exit("Set a real MCP_BEARER_TOKEN before exposing the HTTP transport.")
+        from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+        mcp.auth = StaticTokenVerifier(tokens={token: {"client_id": "grocery-agent"}})
+        mcp.run(
+            transport="http",
+            host="127.0.0.1",  # only the Cloudflare tunnel reaches this
+            port=int(os.environ.get("MCP_HTTP_PORT", "8787")),
+        )
+    else:
+        mcp.run()
+
+
+if __name__ == "__main__":
+    main()

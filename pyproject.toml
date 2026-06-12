@@ -1,0 +1,20 @@
+[project]
+name = "heb-checkout"
+version = "0.1.0"
+description = "MCP server that takes an HEB cart through checkout under policy control"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=3.0",
+    "playwright>=1.40",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+heb-checkout = "heb_checkout.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/heb_checkout"]

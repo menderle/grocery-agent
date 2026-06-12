@@ -1,0 +1,7 @@
+{
+  "_comment": "The standing weekly order. The agent proposes additions after repeated manual adds.",
+  "items": [
+    { "query": "whole milk gallon", "quantity": 1, "substitution": "same_brand_only" },
+    { "query": "large eggs dozen", "quantity": 1, "substitution": "allow" }
+  ]
+}

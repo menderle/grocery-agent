@@ -1,0 +1,24 @@
+# Grocery agent purchase policy.
+# Enforced in code by heb-checkout's place_order — not by prompting.
+# Edit directly or tell the agent: "switch to full auto", "set my weekly limit to $250".
+
+mode: approve            # approve | auto_under_threshold | full_auto
+auto_threshold: 150      # auto_under_threshold: orders at or under this place automatically
+
+spend_limits:            # hard blocks in every mode, including approve
+  per_order: 200
+  weekly: 400            # rolling 7-day total
+  monthly: 1200
+
+max_orders_per_day: 1
+quiet_hours: ["23:00", "07:00"]   # no orders placed in this window
+
+fulfillment: ask         # pickup | delivery | ask (suggest both with times)
+slot_preferences:
+  avoid_calendar_conflicts: true
+  preferred_windows:
+    - "weekday 17:00-20:00"
+    - "sat 09:00-12:00"
+
+approval:
+  expiry_hours: 4        # pending approvals expire, then re-ask with fresh slots
