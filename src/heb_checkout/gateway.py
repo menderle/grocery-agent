@@ -49,6 +49,21 @@ def build_gateway() -> FastMCP:
         create_proxy({"mcpServers": {"shop": {"command": _shop_command(), "args": []}}})
     )
 
+    @gateway.custom_route("/list", methods=["POST"])
+    async def drop_list(request):
+        """Text drop-box: POST plain-text items (one per line) into the inbox file.
+        Lets Apple Shortcuts, webhooks, or any other agent feed the grocery list.
+        Custom routes bypass MCP auth, so this checks the bearer token itself."""
+        from starlette.responses import JSONResponse
+        token = os.environ.get("MCP_BEARER_TOKEN", "")
+        sent = request.headers.get("authorization", "")
+        if not token or sent != f"Bearer {token}":
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        body = (await request.body()).decode("utf-8", errors="replace")
+        from . import lists
+        added = lists.append_inbox(body)
+        return JSONResponse({"added": added})
+
     @gateway.custom_route("/health", methods=["GET"])
     async def health(request):
         from starlette.responses import JSONResponse

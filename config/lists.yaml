@@ -1,0 +1,20 @@
+# Where the agent looks for grocery lists. All sources are merged; the agent reads
+# them with read_grocery_lists and marks them handled with clear_grocery_list.
+
+apple_notes:
+  enabled: true            # macOS only; silently unavailable elsewhere
+  note_title: "Groceries"
+
+apple_reminders:
+  enabled: true            # macOS only. Siri works: "add milk to my Groceries list"
+  list_name: "Groceries"
+
+google_doc:
+  # Share the doc/sheet as "Anyone with the link – Viewer" and paste the URL here.
+  # Docs are read as text, Sheets as the first column. Read-only (no OAuth needed).
+  url: ""
+
+inbox_file:
+  # Universal fallback: anything that can write a text file feeds the agent —
+  # iCloud Drive, Dropbox, Syncthing, shell scripts, other agents.
+  path: data/inbox.md

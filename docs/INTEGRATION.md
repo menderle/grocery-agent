@@ -65,6 +65,19 @@ Spend limits, approval modes, quiet hours, and order caps are enforced in
 `place_order` itself — a confused or compromised orchestrator model cannot exceed
 them, and `blocked` responses are not overridable from the client side.
 
+## Feeding the agent (list intake)
+
+`read_grocery_lists` merges every configured source (`config/lists.yaml`):
+Apple Notes, Apple Reminders (Siri-fed), a link-shared Google Doc/Sheet, and the inbox
+file. The inbox is also reachable as an authenticated HTTP drop-box — useful for Apple
+Shortcuts, Zapier/IFTTT webhooks, or **other agents in a PA constellation**:
+
+```sh
+curl -X POST https://<host>/list \
+  -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
+  --data-binary $'oat milk\npaper towels'
+```
+
 ## Per-user state (what a new person personalizes)
 
 | What | Where | How |

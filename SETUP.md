@@ -91,14 +91,31 @@ final screen, screenshots it, and **stops one click before purchase**.
 5. From the Claude phone app: "what's in my HEB cart?" — if that answers, phone ordering
    works end to end.
 
-## Step 7 — Hands-off interfaces (with the agent)
+## Step 7 — Hands-off list intake (with the agent)
 
-- **Shared list:** create an Apple Reminders list named **Groceries**; add items from
-  your phone all week. Scheduled runs read and clear it.
-- **Email:** create a Gmail label **Groceries**; email yourself lists.
+The agent reads grocery items from every configured source at once
+(`read_grocery_lists` merges and dedupes them; `config/lists.yaml` configures them):
+
+- **Apple Notes:** keep a note titled **Groceries**; the agent reads it and checks
+  items off (✓) once ordered.
+- **Apple Reminders:** a list named **Groceries** — this is also your **Siri channel**
+  ("Hey Siri, add milk to my Groceries list"); the agent completes handled reminders.
+- **Google Doc or Sheet:** share it "Anyone with the link – Viewer", paste the URL in
+  `config/lists.yaml`. Works from any device/person you share the doc with (read-only —
+  the agent can't check items off there).
+- **Inbox file** (`data/inbox.md`): universal — anything that can write a text file
+  (iCloud Drive, Dropbox, scripts) or POST to the gateway's `/list` endpoint feeds it.
+  An **Apple Shortcut** ("Add to groceries" → Get Text → POST to
+  `https://<tunnel-host>/list` with your bearer token) gives you a home-screen/Watch
+  button.
+- **Email:** create a Gmail label **Groceries**; email yourself lists (read via your
+  Gmail MCP on the host LLM side).
 - **Standing order:** tell the agent your staples ("every week: milk, eggs, ...") — they
   live in `data/staples.json`. Then schedule the weekly run (e.g. "every Sunday at 9am,
   build my grocery order") via Claude scheduled tasks.
+
+macOS note: the first Notes/Reminders read triggers an automation permission prompt
+("…wants to control Notes") — click OK once, per app.
 
 ## Step 8 — Dial in autonomy (anytime, in chat)
 

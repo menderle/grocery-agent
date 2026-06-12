@@ -74,5 +74,26 @@ assert parse_dollars("$87") == 87.0
 assert parse_dollars("no money here") is None
 assert parse_dollars(None) is None
 
+from heb_checkout import lists  # noqa: E402
+
+parsed = lists.parse_items(
+    "Groceries:\n- milk\n* eggs\n[ ] bread\n[x] butter\n☐ salsa\n✓ already ordered\n\nlimes  "
+)
+assert parsed == ["milk", "eggs", "bread", "butter", "salsa", "limes"], parsed
+
+assert lists._gdoc_export_url("https://docs.google.com/document/d/abc-123_X/edit?usp=sharing") \
+    == "https://docs.google.com/document/d/abc-123_X/export?format=txt"
+assert lists._gdoc_export_url("https://docs.google.com/spreadsheets/d/s99/edit#gid=0") \
+    == "https://docs.google.com/spreadsheets/d/s99/export?format=csv"
+assert lists._gdoc_export_url("https://example.com/nope") is None
+
+# inbox round-trip inside the temp GROCERY_AGENT_HOME
+(pathlib.Path(tmp) / "config" / "lists.yaml").write_text("inbox_file:\n  path: data/inbox.md\n")
+assert lists.append_inbox("- avocados\ntortillas\n") == 2
+assert lists.read_inbox(lists._cfg())["items"] == ["avocados", "tortillas"]
+assert lists.clear(source="inbox_file", items=["avocados"])["cleared"]
+assert lists.read_inbox(lists._cfg())["items"] == []
+assert lists.clear(source="google_doc", items=[])["cleared"] is False  # read-only
+
 shutil.rmtree(tmp)
 print("selftest: all checks passed")

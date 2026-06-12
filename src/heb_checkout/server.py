@@ -200,6 +200,26 @@ async def remove_payment_card(card_last4: str) -> dict:
 
 
 @mcp.tool
+def read_grocery_lists() -> dict:
+    """Gather grocery items the user has noted everywhere: Apple Notes ('Groceries'
+    note), Apple Reminders ('Groceries' list — Siri adds land here), a link-shared
+    Google Doc/Sheet, and the inbox file (fed by file sync or the POST /list
+    endpoint). Returns per-source items plus a deduplicated merged list. Sources are
+    configured in config/lists.yaml; unavailable sources report a hint, never fail."""
+    from . import lists
+    return lists.read_all()
+
+
+@mcp.tool
+def clear_grocery_list(source: str, items: list[str]) -> dict:
+    """Mark list items handled AFTER they made it into a placed (or user-confirmed)
+    order: completes Reminders, checks off Notes lines (✓), empties the inbox file.
+    source: apple_notes | apple_reminders | inbox_file. Google Docs are read-only."""
+    from . import lists
+    return lists.clear(source, items)
+
+
+@mcp.tool
 def check_upstream_updates() -> dict:
     """Compare the installed texas-grocery-mcp version against the latest PyPI release.
     Reports only — the version is pinned in pyproject.toml and never changes without a
