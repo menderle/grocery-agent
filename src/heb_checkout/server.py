@@ -118,10 +118,15 @@ async def place_order(
     dry_run = config.dry_run_default()
     rec = audit.new_record("dry_run" if dry_run else "attempt", total=expected_total,
                            fulfillment=fulfillment, slot=slot_text, reason=decision.reason)
-    result = await checkout_driver.place(
-        fulfillment, slot_text, rec["id"],
-        dry_run=dry_run, max_total=round(expected_total * 1.10, 2),
-    )
+    try:
+        result = await checkout_driver.place(
+            fulfillment, slot_text, rec["id"],
+            dry_run=dry_run, max_total=round(expected_total * 1.10, 2),
+        )
+    except Exception:
+        if approved:
+            approvals.restore(approval)  # technical failure shouldn't burn the user's yes
+        raise
     if result.get("status") == "placed":
         final_total = parse_dollars(result.get("order_total")) or expected_total
         audit.new_record("placed", total=final_total, fulfillment=fulfillment,

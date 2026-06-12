@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.maurice.grocery-heartbeat</string>
+    <string>com.grocery-agent.heartbeat</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>

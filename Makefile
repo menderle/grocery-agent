@@ -10,8 +10,8 @@ selftest:           ## policy/audit/approvals checks — no network, no browser
 serve:              ## stdio MCP server (local Claude Code/Desktop)
 	.venv/bin/heb-checkout
 
-serve-http:         ## HTTP MCP server for the tunnel (needs MCP_BEARER_TOKEN in env/.env)
-	set -a; [ -f .env ] && . ./.env; set +a; .venv/bin/heb-checkout --http
+serve-http:         ## full gateway (shop+checkout) over HTTP for the tunnel/remote clients
+	set -a; [ -f .env ] && . ./.env; set +a; .venv/bin/grocery-gateway --http
 
 snapshot:           ## tar config + data + HEB session for migration to another host
 	zsh scripts/snapshot.sh
@@ -26,17 +26,20 @@ migrate: snapshot   ## alias: produce the snapshot + print the runbook
 	@echo "   Linux/VPS: cp config/.env.example .env (fill tokens) && docker compose up -d"
 	@echo "4. repoint the cloudflared tunnel at the new host; phone connector keeps working"
 
+install:            ## one-command setup on a new machine (or re-run anytime; idempotent)
+	zsh scripts/install.sh
+
 install-launchd:    ## register the HTTP server + heartbeat as LaunchAgents (this Mac)
 	mkdir -p ~/Library/LaunchAgents
-	sed "s|__HOME__|$(HOME_DIR)|g" deploy/launchd/com.maurice.heb-checkout.plist > ~/Library/LaunchAgents/com.maurice.heb-checkout.plist
-	sed "s|__HOME__|$(HOME_DIR)|g" deploy/launchd/com.maurice.grocery-heartbeat.plist > ~/Library/LaunchAgents/com.maurice.grocery-heartbeat.plist
-	launchctl unload ~/Library/LaunchAgents/com.maurice.heb-checkout.plist 2>/dev/null || true
-	launchctl load ~/Library/LaunchAgents/com.maurice.heb-checkout.plist
-	launchctl unload ~/Library/LaunchAgents/com.maurice.grocery-heartbeat.plist 2>/dev/null || true
-	launchctl load ~/Library/LaunchAgents/com.maurice.grocery-heartbeat.plist
+	sed "s|__HOME__|$(HOME_DIR)|g" deploy/launchd/com.grocery-agent.server.plist > ~/Library/LaunchAgents/com.grocery-agent.server.plist
+	sed "s|__HOME__|$(HOME_DIR)|g" deploy/launchd/com.grocery-agent.heartbeat.plist > ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist
+	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.server.plist 2>/dev/null || true
+	launchctl load ~/Library/LaunchAgents/com.grocery-agent.server.plist
+	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist 2>/dev/null || true
+	launchctl load ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist
 	@echo "LaunchAgents installed. Logs: /tmp/heb-checkout.log /tmp/grocery-heartbeat.log"
 
 uninstall-launchd:
-	launchctl unload ~/Library/LaunchAgents/com.maurice.heb-checkout.plist 2>/dev/null || true
-	launchctl unload ~/Library/LaunchAgents/com.maurice.grocery-heartbeat.plist 2>/dev/null || true
-	rm -f ~/Library/LaunchAgents/com.maurice.heb-checkout.plist ~/Library/LaunchAgents/com.maurice.grocery-heartbeat.plist
+	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.server.plist 2>/dev/null || true
+	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist 2>/dev/null || true
+	rm -f ~/Library/LaunchAgents/com.grocery-agent.server.plist ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist

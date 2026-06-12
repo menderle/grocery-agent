@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 heb-checkout = "heb_checkout.server:main"
+grocery-gateway = "heb_checkout.gateway:main"
 
 [build-system]
 requires = ["hatchling"]

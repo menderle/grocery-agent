@@ -104,20 +104,29 @@ async def add_card(card: dict, set_default: bool = True, remove_old: bool = True
 
         removed = []
         if remove_old:
-            for row_text in after:
-                if new_last4 in row_text:
-                    continue
-                old = last4(row_text.replace(" ", ""))  # best-effort digits from row text
-                row = page.locator(WALLET_SELECTORS["card_row"], has_text=old).first
+            # Re-query rows each pass: the DOM mutates after every removal. Operate on
+            # the row element itself rather than re-locating by text — row text mixes
+            # last4 with expiry digits, so digit extraction is unreliable.
+            for _ in range(5):  # bounded: a wallet won't have more old cards than this
+                target = None
+                for row in await page.locator(WALLET_SELECTORS["card_row"]).all():
+                    text = " ".join((await row.inner_text()).split())
+                    if text and new_last4 not in text:
+                        target = (row, text)
+                        break
+                if target is None:
+                    break
+                row, text = target
                 btn = row.locator(WALLET_SELECTORS["remove_button"]).first
-                if await btn.count():
-                    await btn.click()
-                    await human_pause()
-                    confirm = page.locator(WALLET_SELECTORS["confirm_remove"]).first
-                    if await confirm.count():
-                        await confirm.click()
-                        await human_pause()
-                    removed.append(old)
+                if not await btn.count():
+                    break  # no remove control on this row; stop rather than loop forever
+                await btn.click()
+                await human_pause()
+                confirm = page.locator(WALLET_SELECTORS["confirm_remove"]).first
+                if await confirm.count():
+                    await confirm.click()
+                await human_pause()
+                removed.append(text[:60])
 
         return {
             "status": "saved",

@@ -23,6 +23,18 @@ Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 **→ Step-by-step setup: [SETUP.md](SETUP.md)** (written for a store-bought prepaid
 Mastercard — registration for AVS is mandatory before heb.com will accept it).
 
+## New machine / new person? One command
+
+```sh
+git clone <this repo> grocery-agent && cd grocery-agent && zsh scripts/install.sh
+```
+
+Installs Python/deps/Chromium, generates secrets and MCP registration for that machine,
+and proves the safety layer with a selftest. Works with **any MCP-capable LLM client**,
+not just Claude — and `grocery-gateway` exposes the whole agent as one server that a
+larger personal-assistant agent can mount as its "grocery" capability. See
+[docs/INTEGRATION.md](docs/INTEGRATION.md) and [prompts/system-prompt.md](prompts/system-prompt.md).
+
 ## Setup — manual steps (Maurice)
 
 1. **HEB account (Phase 0):** create/verify account on heb.com, set home store, place one

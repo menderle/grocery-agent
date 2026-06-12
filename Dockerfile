@@ -13,4 +13,4 @@ ENV GROCERY_AGENT_HOME=/data/agent \
     MCP_HTTP_PORT=8787
 
 EXPOSE 8787
-CMD ["heb-checkout", "--http"]
+CMD ["grocery-gateway", "--http"]

@@ -47,6 +47,9 @@ assert policy.evaluate(180.0, now=noon).action == "needs_approval"
 
 a = approvals.create(120.0, "pickup", "Thu 6-7pm", expiry_hours=4)
 assert approvals.pending()
+got = approvals.consume(a["id"])
+assert got["order_total"] == 120.0
+approvals.restore(got)  # technical-failure path puts the approval back
 assert approvals.consume(a["id"])["order_total"] == 120.0
 for bad in (lambda: approvals.consume(a["id"]),
             lambda: policy.update("mode", "yolo"),
@@ -58,11 +61,18 @@ for bad in (lambda: approvals.consume(a["id"]),
         pass
 
 from heb_checkout.cards import last4, luhn_ok  # noqa: E402
+from heb_checkout.checkout_driver import parse_dollars  # noqa: E402
 
 assert luhn_ok("5555555555554444")          # valid test Mastercard
 assert not luhn_ok("5555555555554443")      # bad checksum
 assert not luhn_ok("12345")                 # too short
 assert last4("5555 5555 5555 4444") == "4444"
+
+assert parse_dollars("Total: $123.45") == 123.45
+assert parse_dollars("$1,234.56 estimated") == 1234.56
+assert parse_dollars("$87") == 87.0
+assert parse_dollars("no money here") is None
+assert parse_dollars(None) is None
 
 shutil.rmtree(tmp)
 print("selftest: all checks passed")

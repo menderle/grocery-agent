@@ -42,6 +42,18 @@ async def _shot(page: Page, order_id: str, name: str) -> str:
     return str(path)
 
 
+async def _click_checkout(page: Page) -> None:
+    button = page.locator(SELECTORS["checkout_button"]).first
+    if not await button.count():
+        raise RuntimeError(
+            "no checkout button on the cart page — the HEB cart is probably empty "
+            "(add items first), or the cart page layout changed (fix SELECTORS)"
+        )
+    await button.click()
+    await page.wait_for_load_state("domcontentloaded")
+    await human_pause()
+
+
 async def _texts(page: Page, key: str, limit: int = 30) -> list[str]:
     found = []
     for el in (await page.locator(SELECTORS[key]).all())[:limit]:
@@ -56,9 +68,7 @@ async def get_slots(fulfillment: str, headless: bool = True) -> dict:
     async with heb_page(headless=headless) as page:
         await page.goto(CART_URL, wait_until="domcontentloaded")
         await human_pause()
-        await page.locator(SELECTORS["checkout_button"]).first.click()
-        await page.wait_for_load_state("domcontentloaded")
-        await human_pause()
+        await _click_checkout(page)
         key = "fulfillment_pickup" if fulfillment == "pickup" else "fulfillment_delivery"
         toggle = page.locator(SELECTORS[key]).first
         if await toggle.count():
@@ -75,9 +85,7 @@ async def preview(fulfillment: str, order_id: str, headless: bool = True) -> dic
         await human_pause()
         cart_total = await _texts(page, "cart_total", limit=1)
         await _shot(page, order_id, "01-cart")
-        await page.locator(SELECTORS["checkout_button"]).first.click()
-        await page.wait_for_load_state("domcontentloaded")
-        await human_pause()
+        await _click_checkout(page)
         await _shot(page, order_id, "02-checkout")
         payment = await _texts(page, "saved_payment", limit=3)
         order_total = await _texts(page, "order_total", limit=1)
@@ -103,9 +111,7 @@ async def place(
     async with heb_page(headless=headless) as page:
         await page.goto(CART_URL, wait_until="domcontentloaded")
         await human_pause()
-        await page.locator(SELECTORS["checkout_button"]).first.click()
-        await page.wait_for_load_state("domcontentloaded")
-        await human_pause()
+        await _click_checkout(page)
 
         key = "fulfillment_pickup" if fulfillment == "pickup" else "fulfillment_delivery"
         toggle = page.locator(SELECTORS[key]).first
@@ -135,8 +141,17 @@ async def place(
                 "screenshots": str(audit.screenshots_dir(order_id)),
             }
 
-        # Last-line guard: the on-screen total must not exceed what policy evaluated.
+        # Last-line guard: the on-screen total must be readable AND within what policy
+        # evaluated. An unreadable total means we cannot verify the charge — never
+        # place a live order blind.
         scraped = parse_dollars(order_total[0] if order_total else None)
+        if max_total is not None and scraped is None:
+            return {
+                "status": "aborted",
+                "reason": "could not read the on-screen order total — refusing to place a live "
+                          "order unverified (order_total selector may need fixing)",
+                "screenshots": str(audit.screenshots_dir(order_id)),
+            }
         if max_total is not None and scraped is not None and scraped > max_total:
             return {
                 "status": "aborted",

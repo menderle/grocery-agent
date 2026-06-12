@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.maurice.heb-checkout</string>
+    <string>com.grocery-agent.server</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>
         <string>-c</string>
-        <string>cd __HOME__ &amp;&amp; set -a &amp;&amp; source .env &amp;&amp; exec .venv/bin/heb-checkout --http</string>
+        <string>cd __HOME__ &amp;&amp; set -a &amp;&amp; source .env &amp;&amp; exec .venv/bin/grocery-gateway --http</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__HOME__</string>

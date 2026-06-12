@@ -46,6 +46,14 @@ def consume(approval_id: str) -> dict:
     return approval
 
 
+def restore(approval: dict) -> None:
+    """Put a consumed approval back (checkout failed for technical reasons after
+    consume — the human's yes shouldn't be burned by a browser error)."""
+    data = _load()
+    data[approval["id"]] = approval
+    _save(data)
+
+
 def pending() -> list[dict]:
     now = datetime.now()
     return [a for a in _load().values() if datetime.fromisoformat(a["expires_at"]) >= now]

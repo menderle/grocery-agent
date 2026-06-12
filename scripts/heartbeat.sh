@@ -5,6 +5,9 @@
 # (the pin in pyproject.toml means nothing updates without a deliberate bump).
 set -u
 cd "$(dirname "$0")/.."
+# Load .env so the port (and any overrides) match what the server actually runs with —
+# otherwise a custom MCP_HTTP_PORT would make every heartbeat a false DOWN alert.
+if [[ -f .env ]]; then set -a; source .env; set +a; fi
 PORT="${MCP_HTTP_PORT:-8787}"
 HEALTH=$(curl -s --max-time 10 "http://127.0.0.1:${PORT}/health")
 OK=$(echo "$HEALTH" | grep -o '"ok":true' || true)
