@@ -80,11 +80,14 @@ async def place_order(
     fulfillment: str = "pickup",
     slot_text: str | None = None,
     approval_id: str | None = None,
+    items: list[dict] | None = None,
 ) -> dict:
     """Place the order for the current HEB cart. expected_total: the order total from
     preview_order (policy evaluates against it, and checkout aborts if the on-screen
     total comes out >10% higher). slot_text: substring of the chosen slot from
     get_slots. approval_id: pass when the user has approved a pending order.
+    items: the cart contents as [{"name": ..., "quantity": ...}] — ALWAYS pass these
+    (from the cart tools) so purchase history powers suggest_replenishment.
 
     Outcomes: placed | dry_run | needs_approval (returns approval_id to show the
     user) | blocked (policy; not overridable) | aborted (total mismatch)."""
@@ -94,6 +97,7 @@ async def place_order(
         expected_total = approval["order_total"]
         fulfillment = approval["fulfillment"]
         slot_text = approval.get("slot_text") or slot_text
+        items = items or approval.get("items") or None
         approved = True
 
     decision = policy.evaluate(expected_total, approved=approved)
@@ -105,6 +109,7 @@ async def place_order(
         approval = approvals.create(
             expected_total, fulfillment, slot_text,
             expiry_hours=pol.get("approval", {}).get("expiry_hours", 4),
+            items=items,
         )
         audit.new_record("pending_approval", total=expected_total, approval_id=approval["id"])
         return {
@@ -131,7 +136,7 @@ async def place_order(
         final_total = parse_dollars(result.get("order_total")) or expected_total
         audit.new_record("placed", total=final_total, fulfillment=fulfillment,
                          slot=slot_text, confirmation=result.get("confirmation"),
-                         attempt_id=rec["id"])
+                         items=items or [], attempt_id=rec["id"])
     return result
 
 
@@ -217,6 +222,27 @@ def clear_grocery_list(source: str, items: list[str]) -> dict:
     source: apple_notes | apple_reminders | inbox_file. Google Docs are read-only."""
     from . import lists
     return lists.clear(source, items)
+
+
+@mcp.tool
+def get_upcoming_events(days: int = 7) -> dict:
+    """Upcoming calendar events from the user's ICS feeds (GROCERY_ICS_URLS in .env).
+    Use when building an order: events that involve hosting, cooking, parties, trips,
+    or holidays are opportunities to SUGGEST extra groceries — propose, never add
+    without the user's yes. A trip spanning the order window may also mean ordering
+    less or shifting the delivery slot."""
+    from . import calendar_events
+    return calendar_events.upcoming_events(days)
+
+
+@mcp.tool
+def suggest_replenishment(horizon_days: int = 7) -> dict:
+    """Predict what the user is running low on, from their actual purchase cycles
+    (median days between repeat purchases in placed-order history). Run when building
+    the weekly order; propose due/overdue items alongside the staples list. Items
+    need >=2 recorded purchases before they get predictions."""
+    from . import replenishment
+    return replenishment.suggest(horizon_days)
 
 
 @mcp.tool

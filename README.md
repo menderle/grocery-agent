@@ -17,7 +17,8 @@ Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 | [texas-grocery-mcp](https://github.com/mgwalkerjr95/texas-grocery-mcp) | HEB search, cart, coupons, store selection, session refresh — a **PyPI dependency pinned at 0.1.3** in pyproject.toml (installed into the gitignored `.venv/`, never vendored into this repo, never fetched from GitHub at runtime) |
 | `src/heb_checkout/` | Custom MCP: `get_slots`, `preview_order`, `place_order` (dry-run capable), `get_policy`/`set_policy`, `order_history`, wallet management (`update_payment_card`, `list_payment_methods`, `remove_payment_card`), `check_upstream_updates`, `/health` |
 | `config/policy.yaml` | Autonomy mode, spend limits, quiet hours, fulfillment default |
-| `config/lists.yaml` + `src/heb_checkout/lists.py` | List intake: Apple Notes, Apple Reminders (Siri), link-shared Google Doc/Sheet, inbox file + authenticated `POST /list` drop endpoint |
+| `config/lists.yaml` + `src/heb_checkout/lists.py` | List intake: Apple Notes, Apple Reminders (Siri), link-shared Google Doc/Sheet, iMessage (opt-in), Todoist, Notion, inbox file + authenticated `POST /list` drop endpoint |
+| `calendar_events.py`, `replenishment.py` | Smart suggestions: ICS-feed calendar awareness (party → propose supplies) and purchase-cycle replenishment ("milk due in 2 days") |
 | `data/` | Staples, preferences, append-only order audit log |
 | `deploy/`, `Dockerfile`, `Makefile` | launchd services, heartbeat, Docker stack, host migration |
 

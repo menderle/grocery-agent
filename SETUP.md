@@ -108,11 +108,29 @@ The agent reads grocery items from every configured source at once
   An **Apple Shortcut** ("Add to groceries" → Get Text → POST to
   `https://<tunnel-host>/list` with your bearer token) gives you a home-screen/Watch
   button.
+- **iMessage** (off by default): text yourself "grocery: milk, limes" — enable in
+  `config/lists.yaml` and grant Full Disk Access to the process running the agent.
+  Caveat: some newer messages store text in a format the reader skips; keep triggers
+  simple.
+- **Todoist:** set `TODOIST_API_TOKEN` in `.env`; the agent reads your "Groceries"
+  project and closes tasks once ordered.
+- **Notion:** set `NOTION_API_TOKEN` + `NOTION_PAGE_ID` in `.env` (share the page with
+  your integration); the agent reads unchecked to-dos and checks them off once ordered.
 - **Email:** create a Gmail label **Groceries**; email yourself lists (read via your
   Gmail MCP on the host LLM side).
 - **Standing order:** tell the agent your staples ("every week: milk, eggs, ...") — they
   live in `data/staples.json`. Then schedule the weekly run (e.g. "every Sunday at 9am,
   build my grocery order") via Claude scheduled tasks.
+
+And two smart inputs that need no list at all:
+
+- **Calendar awareness:** put your calendar's secret ICS URL in `.env`
+  (`GROCERY_ICS_URLS`; Google Calendar → Settings → "Secret address in iCal format").
+  When building orders the agent sees "Dinner party Saturday" and *proposes* extras —
+  it never adds items without your yes.
+- **Replenishment prediction:** once orders flow, the agent learns each item's purchase
+  cycle from your receipts and flags what's due ("milk every ~7 days, last bought the
+  4th — add it?"). Needs two purchases of an item before predicting.
 
 macOS note: the first Notes/Reminders read triggers an automation permission prompt
 ("…wants to control Notes") — click OK once, per app.

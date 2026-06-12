@@ -9,6 +9,24 @@ def agent_home() -> Path:
     return Path(os.environ.get("GROCERY_AGENT_HOME", "~/Claude/grocery-agent")).expanduser()
 
 
+def load_env() -> None:
+    """Load agent_home()/.env into os.environ (without overriding existing values).
+    Stdio MCP servers and launchd jobs don't inherit a shell that sourced .env, so
+    secrets (API tokens, ICS URLs, bearer token) are loaded here at import time."""
+    env_file = agent_home() / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+load_env()
+
+
 def policy_path() -> Path:
     return agent_home() / "config" / "policy.yaml"
 

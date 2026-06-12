@@ -88,12 +88,53 @@ assert lists._gdoc_export_url("https://docs.google.com/spreadsheets/d/s99/edit#g
 assert lists._gdoc_export_url("https://example.com/nope") is None
 
 # inbox round-trip inside the temp GROCERY_AGENT_HOME
-(pathlib.Path(tmp) / "config" / "lists.yaml").write_text("inbox_file:\n  path: data/inbox.md\n")
+(pathlib.Path(tmp) / "config" / "lists.yaml").write_text(
+    "apple_notes:\n  enabled: false\napple_reminders:\n  enabled: false\n"
+    "inbox_file:\n  path: data/inbox.md\n"
+)
 assert lists.append_inbox("- avocados\ntortillas\n") == 2
 assert lists.read_inbox(lists._cfg())["items"] == ["avocados", "tortillas"]
 assert lists.clear(source="inbox_file", items=["avocados"])["cleared"]
 assert lists.read_inbox(lists._cfg())["items"] == []
 assert lists.clear(source="google_doc", items=[])["cleared"] is False  # read-only
+
+# --- calendar: ICS parsing (no network) ---
+from heb_checkout.calendar_events import parse_ics  # noqa: E402
+
+ICS = (
+    "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20260615\r\n"
+    "SUMMARY:Dinner party with the\r\n  Garcias\r\nLOCATION:Home\r\nEND:VEVENT\r\n"
+    "BEGIN:VEVENT\r\nDTSTART;TZID=America/Chicago:20260620T180000\r\n"
+    "SUMMARY:Weekly standup\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+)
+events = parse_ics(ICS)
+assert events[0] == {"date": "2026-06-15", "summary": "Dinner party with the Garcias",
+                     "location": "Home", "recurring": False}, events[0]
+assert events[1]["date"] == "2026-06-20" and events[1]["recurring"], events[1]
+
+# --- replenishment: cycle math from fabricated placed orders ---
+from heb_checkout import replenishment  # noqa: E402
+
+for day in ("2026-05-01", "2026-05-08", "2026-05-16", "2026-05-23"):
+    rec = audit.new_record("placed", total=50.0, items=[{"name": "H-E-B Whole Milk, 1 gal"}])
+    # rewrite the timestamp the record was stamped with (locate by unique id)
+    path = next(pathlib.Path(tmp, "data/orders").glob(f"*{rec['id']}*.json"))
+    data = json.loads(path.read_text())
+    data["placed_at"] = day + "T10:00:00"
+    path.write_text(json.dumps(data))
+audit.new_record("placed", total=10.0, items=[{"name": "birthday candles"}])
+
+sug = replenishment.suggest(horizon_days=7, today=__import__("datetime").date(2026, 5, 30))
+due = {d["item"]: d for d in sug["due_or_due_soon"]}
+assert "whole milk gal" in " ".join(due) or "whole milk" in " ".join(due), due
+milk = next(iter(due.values()))
+assert milk["cycle_days"] == 7 and milk["times_bought"] == 4, milk
+assert "birthday candles" in sug["building_history"], sug["building_history"]
+
+# --- new sources gate correctly when unconfigured ---
+result = lists.read_all()
+assert "todoist" not in result["sources"] and "notion" not in result["sources"]
+assert lists.clear("todoist", ["x"])["cleared"] is False  # no token -> graceful
 
 shutil.rmtree(tmp)
 print("selftest: all checks passed")

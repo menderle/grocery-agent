@@ -18,3 +18,26 @@ inbox_file:
   # Universal fallback: anything that can write a text file feeds the agent —
   # iCloud Drive, Dropbox, Syncthing, shell scripts, other agents.
   path: data/inbox.md
+
+imessage:
+  # macOS only, OFF by default: reads ~/Library/Messages/chat.db (read-only) for
+  # messages starting with the trigger prefix, e.g. text yourself "grocery: milk, limes".
+  # Requires Full Disk Access for the host process; newer messages that store text in
+  # attributedBody (no plain text) are skipped — keep trigger texts simple.
+  enabled: false
+  trigger_prefix: "grocery:"
+  lookback_days: 7
+
+todoist:
+  # Token in .env (TODOIST_API_TOKEN). Reads open tasks, closes them once ordered.
+  project: "Groceries"
+
+notion:
+  # Token + page id in .env (NOTION_API_TOKEN, NOTION_PAGE_ID). Reads unchecked
+  # to-do blocks on the page, checks them off once ordered.
+  enabled: true
+
+calendars:
+  # Secret ICS URLs in .env (GROCERY_ICS_URLS). Used by get_upcoming_events so the
+  # agent can suggest items for hosting/cooking events.
+  lookahead_days: 7

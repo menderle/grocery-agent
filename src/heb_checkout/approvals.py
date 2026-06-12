@@ -19,13 +19,15 @@ def _save(data: dict) -> None:
     config.approvals_path().write_text(json.dumps(data, indent=2))
 
 
-def create(order_total: float, fulfillment: str, slot_text: str | None, expiry_hours: float) -> dict:
+def create(order_total: float, fulfillment: str, slot_text: str | None, expiry_hours: float,
+           items: list | None = None) -> dict:
     data = _load()
     approval = {
         "id": uuid.uuid4().hex[:8],
         "order_total": order_total,
         "fulfillment": fulfillment,
         "slot_text": slot_text,
+        "items": items or [],
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "expires_at": (datetime.now() + timedelta(hours=expiry_hours)).isoformat(timespec="seconds"),
     }
