@@ -137,6 +137,64 @@ def order_history(limit: int = 10) -> dict:
 
 
 @mcp.tool
+async def list_payment_methods() -> dict:
+    """Saved payment methods in the HEB wallet (last-4 only)."""
+    from . import wallet
+    return await wallet.list_methods()
+
+
+@mcp.tool
+async def update_payment_card(
+    card_number: str | None = None,
+    expiry: str | None = None,
+    cvv: str | None = None,
+    name_on_card: str | None = None,
+    billing_zip: str | None = None,
+    set_default: bool = True,
+    remove_old: bool = True,
+) -> dict:
+    """Save a new card in the HEB wallet, set it default, and remove the old card(s).
+
+    Preferred: call with NO card arguments — the card is read from the local vault
+    (user ran scripts/add_card.py) and the vault entry is deleted after a successful
+    save. Card details passed as arguments work too, but remind the user they then
+    persist in the chat transcript. Prepaid gift cards MUST be registered with
+    name+ZIP at the issuer first or HEB declines them (AVS)."""
+    from . import cards, wallet
+
+    if card_number:
+        card = {"number": card_number, "expiry": expiry or "", "cvv": cvv or "",
+                "name": name_on_card or "", "zip": billing_zip or ""}
+        if not cards.luhn_ok("".join(c for c in card_number if c.isdigit())):
+            return {"status": "error", "reason": "card number failed checksum — check for typos"}
+        source = "chat"
+    else:
+        card = cards.fetch()
+        if card is None:
+            return {
+                "status": "no_pending_card",
+                "next_step": "ask the user to run: .venv/bin/python scripts/add_card.py "
+                             "(or to provide the card details directly, noting transcript persistence)",
+            }
+        source = "vault"
+
+    result = await wallet.add_card(card, set_default=set_default, remove_old=remove_old)
+    if source == "vault":
+        cards.delete()  # secret's job is done
+    audit.new_record("card_update", source=source, **result)  # last4-only by construction
+    return {**result, "card_source": source, "vault_cleared": source == "vault"}
+
+
+@mcp.tool
+async def remove_payment_card(card_last4: str) -> dict:
+    """Remove a saved card (by its last 4 digits) from the HEB wallet."""
+    from . import wallet
+    result = await wallet.remove_card(card_last4)
+    audit.new_record("card_removed", **result)
+    return result
+
+
+@mcp.tool
 def check_upstream_updates() -> dict:
     """Compare the installed texas-grocery-mcp version against the latest PyPI release.
     Reports only — the version is pinned in pyproject.toml and never changes without a

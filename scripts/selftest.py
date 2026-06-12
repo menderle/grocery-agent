@@ -57,5 +57,12 @@ for bad in (lambda: approvals.consume(a["id"]),
     except ValueError:
         pass
 
+from heb_checkout.cards import last4, luhn_ok  # noqa: E402
+
+assert luhn_ok("5555555555554444")          # valid test Mastercard
+assert not luhn_ok("5555555555554443")      # bad checksum
+assert not luhn_ok("12345")                 # too short
+assert last4("5555 5555 5555 4444") == "4444"
+
 shutil.rmtree(tmp)
 print("selftest: all checks passed")

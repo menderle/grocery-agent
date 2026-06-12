@@ -15,7 +15,7 @@ Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 | Piece | What it does |
 |---|---|
 | [texas-grocery-mcp](https://github.com/mgwalkerjr95/texas-grocery-mcp) | HEB search, cart, coupons, store selection, session refresh — a **PyPI dependency pinned at 0.1.3** in pyproject.toml (installed into the gitignored `.venv/`, never vendored into this repo, never fetched from GitHub at runtime) |
-| `src/heb_checkout/` | Custom MCP: `get_slots`, `preview_order`, `place_order` (dry-run capable), `get_policy`/`set_policy`, `order_history`, `/health` |
+| `src/heb_checkout/` | Custom MCP: `get_slots`, `preview_order`, `place_order` (dry-run capable), `get_policy`/`set_policy`, `order_history`, wallet management (`update_payment_card`, `list_payment_methods`, `remove_payment_card`), `check_upstream_updates`, `/health` |
 | `config/policy.yaml` | Autonomy mode, spend limits, quiet hours, fulfillment default |
 | `data/` | Staples, preferences, append-only order audit log |
 | `deploy/`, `Dockerfile`, `Makefile` | launchd services, heartbeat, Docker stack, host migration |
@@ -52,6 +52,10 @@ Mastercard — registration for AVS is mandatory before heb.com will accept it).
   and screenshots the final screen. Flip to `false` only after Phase 2 verification.
 - Live orders abort if the on-screen total exceeds the policy-evaluated total by >10%.
 - Every attempt (placed / dry-run / blocked / pending) is an audit record in `data/orders/`.
+- **Card handling:** the agent manages the HEB wallet (add/swap/remove cards), but full
+  card numbers stay out of logs and audit records (last-4 only). Preferred intake is the
+  local keyring vault (`scripts/add_card.py` → "switch HEB to my new card" → vault entry
+  deleted after save); chat-provided details are supported but persist in the transcript.
 - Final backstop independent of all software: the prepaid card's own balance/limit.
 
 Change behavior by talking to the agent: "switch to full auto", "set my weekly limit to

@@ -24,14 +24,20 @@ but two things are **mandatory** for online use:
    (e.g. balance check / "register your card" URL) and add your **name and billing
    address**. Unregistered gift cards fail heb.com's address verification (AVS) and get
    declined even with sufficient balance. Use the same address as your HEB account.
-2. **Save it on heb.com** → Account → Payment methods → add card → set as **default**.
-   The card number is typed once, by you, on heb.com — it never enters this agent,
-   its config, or its logs.
+   (This step stays manual — it's a different site per issuer.)
+2. **Hand it to the agent** — the agent manages the HEB wallet for you. Two ways:
+   - **Vault (recommended):** run `.venv/bin/python scripts/add_card.py` in Terminal —
+     prompts locally (number/CVV hidden), stores in the macOS keyring. Then say
+     **"switch HEB to my new card"**: the agent saves it on heb.com, sets it default,
+     removes the old card, and deletes the keyring entry. The number never appears in
+     chat, logs, or audit records (last-4 only).
+   - **In chat:** just message the card details. Works, but they then persist in your
+     conversation transcript — fine if you accept that for a low-balance gift card.
 
 Gift-card realities to plan around:
 
-- **Non-reloadable.** When the balance runs low, buy a new card, register it, swap the
-  default payment on heb.com. The agent never needs to know.
+- **Non-reloadable.** When the balance runs low: buy a new card → register it at the
+  issuer → `add_card.py` (or paste in chat) → "switch HEB to my new card". ~3 minutes.
 - **Keep ~25% buffer** above your typical order. Delivery orders pre-authorize above the
   cart total (tip + substitution headroom); a card with an exact-amount balance can
   decline at pre-auth even though the final charge would have fit.
