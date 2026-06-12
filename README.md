@@ -14,7 +14,7 @@ Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 
 | Piece | What it does |
 |---|---|
-| [texas-grocery-mcp](https://github.com/mgwalkerjr95/texas-grocery-mcp) | HEB search, cart, coupons, store selection, session refresh |
+| [texas-grocery-mcp](https://github.com/mgwalkerjr95/texas-grocery-mcp) | HEB search, cart, coupons, store selection, session refresh — a **PyPI dependency pinned at 0.1.3** in pyproject.toml (installed into the gitignored `.venv/`, never vendored into this repo, never fetched from GitHub at runtime) |
 | `src/heb_checkout/` | Custom MCP: `get_slots`, `preview_order`, `place_order` (dry-run capable), `get_policy`/`set_policy`, `order_history`, `/health` |
 | `config/policy.yaml` | Autonomy mode, spend limits, quiet hours, fulfillment default |
 | `data/` | Staples, preferences, append-only order audit log |
