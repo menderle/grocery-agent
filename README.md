@@ -4,6 +4,10 @@ Always-on agent that buys groceries from HEB: shop by chatting with Claude (incl
 a shared Reminders list, email, or a weekly standing order. Pays with a prepaid debit card
 saved on the HEB account. Checkout autonomy is a policy toggle, enforced in code.
 
+Ordering preference: **HEB natively** (curbside pickup + HEB scheduled delivery — what this
+repo implements) with **Favor** (H-E-B-owned, on-demand ~2h delivery) as the planned fast-
+delivery module. Third-party marketplaces (Instacart etc.) are deliberately out of scope.
+
 Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 
 ## Pieces
@@ -71,3 +75,6 @@ best-effort until verified — then one watched live order (~$20) in `approve` m
 - [ ] Phase 0: HEB account + prepaid card (manual)
 - [ ] Phase 2 verification: selectors against live logged-in checkout, first live order
 - [ ] Phase 4: tunnel + phone connector, Reminders/email sweeps, weekly standing order
+- [ ] Later: `favor_checkout` driver for on-demand delivery — same pattern as the HEB driver
+      (Playwright against favordelivery.com web ordering, no public API exists, prepaid card
+      saved on the Favor account, same policy engine gates `place_order`)
