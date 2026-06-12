@@ -20,6 +20,9 @@ Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 | `data/` | Staples, preferences, append-only order audit log |
 | `deploy/`, `Dockerfile`, `Makefile` | launchd services, heartbeat, Docker stack, host migration |
 
+**→ Step-by-step setup: [SETUP.md](SETUP.md)** (written for a store-bought prepaid
+Mastercard — registration for AVS is mandatory before heb.com will accept it).
+
 ## Setup — manual steps (Maurice)
 
 1. **HEB account (Phase 0):** create/verify account on heb.com, set home store, place one

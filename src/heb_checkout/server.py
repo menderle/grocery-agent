@@ -136,6 +136,15 @@ def order_history(limit: int = 10) -> dict:
     return {"records": audit.all_records()[-limit:]}
 
 
+@mcp.tool
+def check_upstream_updates() -> dict:
+    """Compare the installed texas-grocery-mcp version against the latest PyPI release.
+    Reports only — the version is pinned in pyproject.toml and never changes without a
+    deliberate pin bump. Run when the user asks about MCP updates."""
+    from . import updates
+    return updates.check()
+
+
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request):
     from starlette.responses import JSONResponse
