@@ -39,12 +39,23 @@ def build_gateway() -> FastMCP:
     gateway = FastMCP(
         "grocery-agent",
         instructions=(
-            "Grocery agent for HEB. Workflow: search/cart/coupon tools (from the shop "
-            "server) to build the cart, then preview_order -> place_order. place_order "
-            "is policy-gated (spend limits, approval modes) and may return "
-            "needs_approval with an approval_id — show the user the summary and only "
-            "retry with that approval_id after an explicit yes. Never attempt to work "
-            "around a 'blocked' response: those are the user's own hard limits."
+            "Grocery agent for HEB (store_id 202, Burnet Rd Austin — pass it on "
+            "product_search/cart calls).\n\n"
+            "When the user describes a MEAL or EVENT instead of exact items "
+            "(e.g. 'hot dogs for 8 people', 'taco night', 'breakfast for the kids'):\n"
+            "  1. Work out quantities from the headcount (e.g. ~2 hot dogs/person → "
+            "16 → 2 packs of franks + 2 packs of buns). State your assumptions.\n"
+            "  2. Ask a SHORT batch of clarifying questions BEFORE building the cart — "
+            "the obvious complements and any prefs: buns? condiments (ketchup, mustard, "
+            "relish)? sides/chips/drinks? brand or dietary constraints? Ask them "
+            "together, not one at a time.\n"
+            "  3. After answers, search each item, add to cart, then preview_order and "
+            "show the itemized cart + total + pickup/delivery slot.\n\n"
+            "Then place_order. It is policy-gated (spend limits, approval modes) and may "
+            "return needs_approval with an approval_id — show the summary and only retry "
+            "with that approval_id after an explicit yes. Always pass `items` (the cart "
+            "contents) to place_order. Never work around a 'blocked' response: those are "
+            "the user's own hard limits."
         ),
     )
     from fastmcp.server import create_proxy
