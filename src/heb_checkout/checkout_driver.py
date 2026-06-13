@@ -1,9 +1,14 @@
-"""Drives heb.com checkout with Playwright. ALL site selectors live in SELECTORS so a
-UI change is a one-place fix. Nothing here is charged until place(dry_run=False) clicks
-the final button; every step screenshots into the order's audit folder.
+"""Drives heb.com checkout with Playwright. Flow verified against the live site
+(2026-06-12), curbside at Burnet Rd:
 
-NOTE: selectors are best-effort until first verified against a logged-in session
-(Phase 2 verification in the plan). Run exclusively with dry_run=True until then.
+  cart → "Choose pickup time" → expand "Scheduled" → pick a slot → "Select this time"
+       → "Start checkout" → /precheckout upsell → "Continue"
+       → /checkout → select saved payment card → "Place order" (enabled only after
+         a card is chosen).
+
+dry_run=True stops one click before "Place order" and screenshots the final screen —
+the ONLY function that can spend money is place(dry_run=False). Selectors live in
+SELECTORS so a UI change is a one-place fix.
 """
 
 import re
@@ -13,6 +18,18 @@ from playwright.async_api import Page
 from . import audit
 from .browser import heb_page, human_pause
 
+CART_URL = "https://www.heb.com/cart"
+
+SELECTORS = {
+    "choose_time": "button:has-text('Choose pickup time'), button:has-text('Choose delivery time'), button:has-text('Change time')",
+    "fulfillment_tab": "button[role='tab'], [role='tablist'] button",  # Curbside / Delivery
+    "scheduled_expander": "text=Scheduled",
+    "select_time": "button:has-text('Select this time')",
+    "start_checkout": "button:has-text('Start checkout')",
+    "precheckout_continue": "a:has-text('Continue'), button:has-text('Continue')",
+    "place_order": "button:has-text('Place order')",
+}
+
 
 def parse_dollars(text: str | None) -> float | None:
     if not text:
@@ -20,153 +37,175 @@ def parse_dollars(text: str | None) -> float | None:
     m = re.search(r"\$\s*([\d,]+\.?\d*)", text)
     return float(m.group(1).replace(",", "")) if m else None
 
-CART_URL = "https://www.heb.com/cart"
-CHECKOUT_URL = "https://www.heb.com/checkout"
-
-SELECTORS = {
-    "cart_total": "[data-qe-id='cartTotal'], [data-testid*='total']",
-    "checkout_button": "button:has-text('Checkout'), a[href*='/checkout']",
-    "fulfillment_pickup": "button:has-text('Pickup'), [data-testid*='pickup']",
-    "fulfillment_delivery": "button:has-text('Delivery'), [data-testid*='delivery']",
-    "slot_option": "[data-testid*='timeslot'], [class*='time-slot'], button[aria-label*='Reserve']",
-    "saved_payment": "[data-testid*='payment'] :text('ending in'), [class*='saved-card']",
-    "order_total": "[data-testid*='orderTotal'], [class*='order-total']",
-    "place_order_button": "button:has-text('Place order'), button:has-text('Place Order')",
-    "confirmation_number": "[data-testid*='confirmation'], :text('Order #')",
-}
-
 
 async def _shot(page: Page, order_id: str, name: str) -> str:
     path = audit.screenshots_dir(order_id) / f"{name}.png"
-    await page.screenshot(path=str(path), full_page=False)
+    await page.screenshot(path=str(path), full_page=True)
     return str(path)
 
 
-async def _click_checkout(page: Page) -> None:
-    button = page.locator(SELECTORS["checkout_button"]).first
-    if not await button.count():
+async def _estimated_total(page: Page) -> float | None:
+    body = " ".join((await page.locator("body").inner_text()).split())
+    m = re.search(r"Estimated total \$([\d,]+\.?\d*)", body)
+    return float(m.group(1).replace(",", "")) if m else None
+
+
+async def _open_time_chooser(page: Page, fulfillment: str) -> None:
+    """Open the fulfillment dialog and switch tab if needed (curbside is default)."""
+    btn = page.locator(SELECTORS["choose_time"]).first
+    if not await btn.count():
         raise RuntimeError(
-            "no checkout button on the cart page — the HEB cart is probably empty "
-            "(add items first), or the cart page layout changed (fix SELECTORS)"
+            "no 'Choose pickup time' control on the cart — cart may be empty or the "
+            "layout changed (fix SELECTORS['choose_time'])"
         )
-    await button.click()
-    await page.wait_for_load_state("domcontentloaded")
-    await human_pause()
+    await btn.click()
+    await human_pause(1.5, 3.0)
+    if fulfillment == "delivery":
+        tab = page.locator(SELECTORS["fulfillment_tab"], has_text="Delivery").first
+        if await tab.count():
+            await tab.click()
+            await human_pause()
+    sched = page.locator(SELECTORS["scheduled_expander"]).first
+    if await sched.count():
+        await sched.click()
+        await human_pause()
 
 
-async def _texts(page: Page, key: str, limit: int = 30) -> list[str]:
-    found = []
-    for el in (await page.locator(SELECTORS[key]).all())[:limit]:
-        text = (await el.inner_text()).strip()
-        if text:
-            found.append(" ".join(text.split()))
-    return found
+async def _slot_texts(page: Page) -> list[str]:
+    """Visible time-slot labels like '7:00–7:30 AM' in the reserve dialog."""
+    dlg = page.locator("[role='dialog']").first
+    scope = dlg if await dlg.count() else page
+    text = " ".join((await scope.inner_text()).split())
+    return re.findall(r"\d{1,2}:\d{2}[–-]\d{1,2}:\d{2}\s*[AP]M", text)
 
 
 async def get_slots(fulfillment: str, headless: bool = True) -> dict:
-    """List available time slots for 'pickup' or 'delivery' without touching the order."""
     async with heb_page(headless=headless) as page:
         await page.goto(CART_URL, wait_until="domcontentloaded")
-        await human_pause()
-        await _click_checkout(page)
-        key = "fulfillment_pickup" if fulfillment == "pickup" else "fulfillment_delivery"
-        toggle = page.locator(SELECTORS[key]).first
-        if await toggle.count():
-            await toggle.click()
-            await human_pause()
-        slots = await _texts(page, "slot_option")
+        await page.wait_for_timeout(6000)  # cart fulfillment controls render async
+        await _open_time_chooser(page, fulfillment)
+        slots = await _slot_texts(page)
         return {"fulfillment": fulfillment, "slots": slots, "slot_count": len(slots)}
 
 
+async def _reserve_and_advance(page: Page, fulfillment: str, slot_text: str | None,
+                               order_id: str) -> None:
+    """Cart → reserve a slot (unless one is already reserved) → Start checkout →
+    past the precheckout upsell."""
+    start = page.locator(SELECTORS["start_checkout"]).first
+    if not await start.count():
+        # No slot reserved yet — go through the time chooser.
+        await _open_time_chooser(page, fulfillment)
+        slots = await _slot_texts(page)
+        if not slots:
+            raise RuntimeError("no time slots offered (store/day may be full)")
+        target = slot_text
+        if target:
+            target = next((s for s in slots if slot_text.replace(" ", "") in s.replace(" ", "")), None)
+        chosen = target or slots[0]
+        await page.locator(f"text={chosen}").first.click()
+        await human_pause()
+        sel = page.locator(SELECTORS["select_time"]).first
+        if await sel.count():
+            await sel.click()
+            await human_pause(2.0, 4.0)
+        start = page.locator(SELECTORS["start_checkout"]).first
+    await _shot(page, order_id, "01-slot-reserved")
+
+    await start.click()
+    await page.wait_for_load_state("domcontentloaded")
+    await human_pause(2.0, 4.0)
+
+    # Walk through the precheckout upsell ("/precheckout") to the real "/checkout".
+    for _ in range(3):
+        if "/checkout" in page.url and "/precheckout" not in page.url:
+            break
+        cont = page.locator(SELECTORS["precheckout_continue"]).first
+        if await cont.count():
+            await cont.click()
+            try:
+                await page.wait_for_url("**/checkout", timeout=20000)
+            except Exception:
+                await page.wait_for_load_state("domcontentloaded")
+            await human_pause(2.0, 4.0)
+        else:
+            await human_pause(1.5, 2.5)
+    await page.wait_for_timeout(2000)
+    await _shot(page, order_id, "02-checkout")
+
+
+async def _select_payment(page: Page) -> bool:
+    """Click the saved card so 'Place order' enables. Returns True once Place order is
+    actually enabled (verified), not merely clicked."""
+    po = page.locator(SELECTORS["place_order"]).first
+    for label in ("Mastercard", "Visa", "Discover", "American Express", "ending"):
+        card = page.locator("button", has=page.locator(f"text={label}")).first
+        if not await card.count():
+            continue
+        for _ in range(2):  # first click occasionally doesn't register
+            await card.click()
+            await human_pause(1.5, 3.0)
+            if await po.count() and not await po.is_disabled():
+                return True
+    return await po.count() > 0 and not await po.is_disabled()
+
+
 async def preview(fulfillment: str, order_id: str, headless: bool = True) -> dict:
-    """Walk to the final review screen and report totals/payment. Never places an order."""
     async with heb_page(headless=headless) as page:
         await page.goto(CART_URL, wait_until="domcontentloaded")
-        await human_pause()
-        cart_total = await _texts(page, "cart_total", limit=1)
-        await _shot(page, order_id, "01-cart")
-        await _click_checkout(page)
-        await _shot(page, order_id, "02-checkout")
-        payment = await _texts(page, "saved_payment", limit=3)
-        order_total = await _texts(page, "order_total", limit=1)
+        await page.wait_for_timeout(6000)
+        await _reserve_and_advance(page, fulfillment, None, order_id)
+        ready = await _select_payment(page)
+        total = await _estimated_total(page)
+        await _shot(page, order_id, "03-review")
         return {
             "fulfillment": fulfillment,
-            "cart_total": cart_total[0] if cart_total else None,
-            "order_total": order_total[0] if order_total else None,
-            "saved_payment": payment,
+            "estimated_total": total,
+            "place_order_ready": ready,
             "screenshots": str(audit.screenshots_dir(order_id)),
         }
 
 
-async def place(
-    fulfillment: str,
-    slot_text: str | None,
-    order_id: str,
-    dry_run: bool = True,
-    headless: bool = True,
-    max_total: float | None = None,
-) -> dict:
-    """Complete checkout. dry_run=True stops one click before purchase and screenshots
-    the final screen — this is the only function that can spend money."""
+async def place(fulfillment: str, slot_text: str | None, order_id: str,
+                dry_run: bool = True, headless: bool = True,
+                max_total: float | None = None) -> dict:
     async with heb_page(headless=headless) as page:
         await page.goto(CART_URL, wait_until="domcontentloaded")
+        await page.wait_for_timeout(6000)
+        await _reserve_and_advance(page, fulfillment, slot_text, order_id)
+
+        if not await _select_payment(page):
+            return {"status": "aborted", "reason": "no saved payment card on the checkout page",
+                    "screenshots": str(audit.screenshots_dir(order_id))}
         await human_pause()
-        await _click_checkout(page)
-
-        key = "fulfillment_pickup" if fulfillment == "pickup" else "fulfillment_delivery"
-        toggle = page.locator(SELECTORS[key]).first
-        if await toggle.count():
-            await toggle.click()
-            await human_pause()
-
-        if slot_text:
-            slot = page.locator(SELECTORS["slot_option"], has_text=slot_text).first
-            if not await slot.count():
-                raise RuntimeError(f"slot matching {slot_text!r} not found")
-            await slot.click()
-            await human_pause()
-        await _shot(page, order_id, "03-slot-selected")
-
-        order_total = await _texts(page, "order_total", limit=1)
-        final_button = page.locator(SELECTORS["place_order_button"]).first
-        if not await final_button.count():
-            raise RuntimeError("place-order button not found — checkout flow may have changed")
+        total = await _estimated_total(page)
+        po = page.locator(SELECTORS["place_order"]).first
+        if not await po.count():
+            raise RuntimeError("Place order button not found — checkout flow changed")
+        if await po.is_disabled():
+            return {"status": "aborted", "reason": "Place order stayed disabled after selecting payment",
+                    "screenshots": str(audit.screenshots_dir(order_id))}
         await _shot(page, order_id, "04-final-review")
 
         if dry_run:
-            return {
-                "status": "dry_run",
-                "order_total": order_total[0] if order_total else None,
-                "stopped_before": "place_order click",
-                "screenshots": str(audit.screenshots_dir(order_id)),
-            }
+            return {"status": "dry_run", "estimated_total": total,
+                    "stopped_before": "Place order click",
+                    "screenshots": str(audit.screenshots_dir(order_id))}
 
-        # Last-line guard: the on-screen total must be readable AND within what policy
-        # evaluated. An unreadable total means we cannot verify the charge — never
-        # place a live order blind.
-        scraped = parse_dollars(order_total[0] if order_total else None)
-        if max_total is not None and scraped is None:
-            return {
-                "status": "aborted",
-                "reason": "could not read the on-screen order total — refusing to place a live "
-                          "order unverified (order_total selector may need fixing)",
-                "screenshots": str(audit.screenshots_dir(order_id)),
-            }
-        if max_total is not None and scraped is not None and scraped > max_total:
-            return {
-                "status": "aborted",
-                "reason": f"on-screen total ${scraped:.2f} exceeds approved ${max_total:.2f}",
-                "screenshots": str(audit.screenshots_dir(order_id)),
-            }
+        if max_total is not None and total is None:
+            return {"status": "aborted", "reason": "could not read order total — refusing to place blind",
+                    "screenshots": str(audit.screenshots_dir(order_id))}
+        if max_total is not None and total is not None and total > max_total:
+            return {"status": "aborted",
+                    "reason": f"on-screen total ${total:.2f} exceeds approved ${max_total:.2f}",
+                    "screenshots": str(audit.screenshots_dir(order_id))}
 
-        await final_button.click()
+        await po.click()
         await page.wait_for_load_state("domcontentloaded")
-        await human_pause()
-        confirmation = await _texts(page, "confirmation_number", limit=2)
+        await human_pause(3.0, 5.0)
         await _shot(page, order_id, "05-confirmation")
-        return {
-            "status": "placed",
-            "order_total": order_total[0] if order_total else None,
-            "confirmation": confirmation,
-            "screenshots": str(audit.screenshots_dir(order_id)),
-        }
+        body = " ".join((await page.locator("body").inner_text()).split())
+        conf = re.search(r"[Oo]rder\s*#?\s*(\w[\w-]{4,})", body)
+        return {"status": "placed", "estimated_total": total,
+                "confirmation": conf.group(0) if conf else None,
+                "screenshots": str(audit.screenshots_dir(order_id))}

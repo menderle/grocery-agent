@@ -133,7 +133,7 @@ async def place_order(
             approvals.restore(approval)  # technical failure shouldn't burn the user's yes
         raise
     if result.get("status") == "placed":
-        final_total = parse_dollars(result.get("order_total")) or expected_total
+        final_total = result.get("estimated_total") or expected_total
         audit.new_record("placed", total=final_total, fulfillment=fulfillment,
                          slot=slot_text, confirmation=result.get("confirmation"),
                          items=items or [], attempt_id=rec["id"])
