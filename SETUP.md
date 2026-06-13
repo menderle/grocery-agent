@@ -62,15 +62,21 @@ Gift-card realities to plan around:
 (Alternative: a [Privacy.com](https://privacy.com) virtual card — merchant-locked,
 reloadable, pausable — avoids every bullet above.)
 
-## Step 3 — First HEB login (one-time, ~5 min)
+## Step 3 — HEB login: the parked browser (one-time, ~5 min)
 
-1. Open your LLM client in this folder (Claude: `cd grocery-agent && claude` — the
-   `.mcp.json` written by the installer registers the MCP servers automatically).
-2. Say: **"Authenticate with HEB"** — a browser window opens; log in as yourself. The
-   session is saved to `~/.texas-grocery-mcp/auth.json` and shared with the checkout
-   server; credentials go to the macOS keyring.
-3. Sanity check, still in chat: "search HEB for whole milk", "add a gallon to my cart",
-   "what coupons can I clip?"
+HEB's bot detection blocks automated logins, so the agent reads its session from a
+**genuine Chrome window that stays running** (this is what makes the agent reliable —
+a live real browser keeps the session naturally alive; only cold relaunches get blocked):
+
+1. `zsh scripts/start_parked_chrome.sh` — a real Chrome opens on the HEB login page.
+2. Log in (**check "keep me signed in"**), set your home store, then just **leave the
+   window open** (minimized is fine).
+3. The agent syncs cookies from it automatically (`sync_parked_session.py`, run by the
+   heartbeat) — and harvests HEB's current API hashes at the same time.
+4. Sanity check in chat: "search HEB for whole milk", "add a gallon to my cart".
+
+If the parked window ever gets logged out or closed, the heartbeat notifies you;
+re-run steps 1–2 (~2 min).
 
 ## Step 4 — Checkout verification (dry-run, with the agent)
 

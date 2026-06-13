@@ -25,9 +25,11 @@ SELECTORS = {
     "fulfillment_tab": "button[role='tab'], [role='tablist'] button",  # Curbside / Delivery
     "scheduled_expander": "text=Scheduled",
     "select_time": "button:has-text('Select this time')",
-    "start_checkout": "button:has-text('Start checkout')",
+    # HEB uses data-qe-id="placeOrderButton" for the submit on BOTH cart ('Start
+    # checkout') and /checkout ('Place order') — disambiguate by label.
+    "start_checkout": "button[data-qe-id='placeOrderButton']:has-text('Start checkout'), button:has-text('Start checkout')",
     "precheckout_continue": "a:has-text('Continue'), button:has-text('Continue')",
-    "place_order": "button:has-text('Place order')",
+    "place_order": "button[data-qe-id='placeOrderButton']:has-text('Place order'), button:has-text('Place order')",
 }
 
 
@@ -36,6 +38,24 @@ def parse_dollars(text: str | None) -> float | None:
         return None
     m = re.search(r"\$\s*([\d,]+\.?\d*)", text)
     return float(m.group(1).replace(",", "")) if m else None
+
+
+async def _dismiss_modals(page: Page) -> None:
+    """Close interstitial popups ('What's New', promos) that intercept clicks."""
+    for _ in range(3):
+        cover = page.locator("[data-component='modal-cover-container']").first
+        if not await cover.count():
+            return
+        close = page.locator(
+            "[data-component*='modal'] button[aria-label*='lose'], "
+            "[data-component*='modal'] button:has-text('Close'), "
+            "[data-component*='modal'] button:has-text('Got it')"
+        ).first
+        if await close.count():
+            await close.click()
+        else:
+            await page.keyboard.press("Escape")
+        await human_pause(0.8, 1.5)
 
 
 async def _shot(page: Page, order_id: str, name: str) -> str:
@@ -92,6 +112,7 @@ async def _reserve_and_advance(page: Page, fulfillment: str, slot_text: str | No
                                order_id: str) -> None:
     """Cart → reserve a slot (unless one is already reserved) → Start checkout →
     past the precheckout upsell."""
+    await _dismiss_modals(page)  # 'What's New' covers intercept every click
     start = page.locator(SELECTORS["start_checkout"]).first
     if not await start.count():
         # No slot reserved yet — go through the time chooser.
