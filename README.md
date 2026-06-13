@@ -10,6 +10,12 @@ delivery module. Third-party marketplaces (Instacart etc.) are deliberately out 
 
 Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 
+**Docs:** [SETUP.md](SETUP.md) (first-run) · [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+(every pitfall we hit + the fix — read this when something breaks) ·
+[docs/SESSION-AND-HASHES.md](docs/SESSION-AND-HASHES.md) (the two HEB gotchas) ·
+[docs/SHARING.md](docs/SHARING.md) (personalize before handing to someone else) ·
+[docs/INTEGRATION.md](docs/INTEGRATION.md) (any LLM / phone / PA agent).
+
 ## Pieces
 
 | Piece | What it does |

@@ -35,20 +35,31 @@ def _shop_command() -> str:
     return str(Path(sys.executable).parent / "texas-grocery-mcp")
 
 
+def _store() -> tuple[str, str]:
+    """Home store (id, name) from config/store.json — per-user, not hardcoded."""
+    import json
+    path = config.agent_home() / "config" / "store.json"
+    if path.exists():
+        d = json.loads(path.read_text())
+        return str(d.get("store_id", "202")), d.get("name", "your H-E-B")
+    return "202", "your H-E-B"
+
+
 def build_gateway() -> FastMCP:
+    store_id, store_name = _store()
     gateway = FastMCP(
         "grocery-agent",
         instructions=(
             "Grocery agent for HEB.\n\n"
             "CRITICAL store rules:\n"
-            "  - The HEB session is ALREADY set to Burnet Rd (store 202) — the cart and "
-            "every order go there. This is correct and final.\n"
-            "  - ALWAYS pass store_id=\"202\" to EVERY product_search call (without it, "
-            "prices come from the wrong store). Never say 'no default store is set' — "
-            "just pass store_id=\"202\".\n"
+            f"  - The HEB session is ALREADY set to {store_name} (store {store_id}) — the "
+            "cart and every order go there. This is correct and final.\n"
+            f"  - ALWAYS pass store_id=\"{store_id}\" to EVERY product_search call (without "
+            "it, prices come from the wrong store). Never say 'no default store is set' — "
+            f"just pass store_id=\"{store_id}\".\n"
             "  - NEVER call any store-change / set-default-store / set-fulfillment tool. "
             "It fails (a known stale-API issue) AND is unnecessary since the store is "
-            "already Burnet Rd. If the user asks to change stores, tell them to set it in "
+            f"already set. If the user asks to change stores, tell them to set it in "
             "the HEB app/site directly.\n\n"
             "When the user describes a MEAL or EVENT instead of exact items "
             "(e.g. 'hot dogs for 8 people', 'taco night', 'breakfast for the kids'):\n"
