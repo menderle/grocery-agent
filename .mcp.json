@@ -1,16 +1,19 @@
 {
   "mcpServers": {
     "texas-grocery": {
-      "command": "/Users/maurice/Claude/grocery-agent/.venv/bin/texas-grocery-mcp",
+      "command": "/Users/maurice/Claude/grocery-agent/scripts/shop-server",
       "args": [],
-      "env": {}
+      "env": {
+        "HEB_DEFAULT_STORE": "202"
+      }
     },
     "heb-checkout": {
       "command": "/Users/maurice/Claude/grocery-agent/.venv/bin/heb-checkout",
       "args": [],
       "env": {
         "GROCERY_AGENT_HOME": "/Users/maurice/Claude/grocery-agent",
-        "HEB_CHECKOUT_DRY_RUN": "true"
+        "HEB_CHECKOUT_DRY_RUN": "true",
+        "HEB_DEFAULT_STORE": "202"
       }
     }
   }

@@ -19,6 +19,15 @@ else
     echo "$(date -Iseconds) ok"
 fi
 
+# Keep the HEB session warm (refreshes only when close to expiry; ~10s when it does).
+KA=$(.venv/bin/python scripts/keepalive.py 2>&1 | tail -1)
+if [[ $? -ne 0 ]]; then
+    osascript -e "display notification \"HEB session refresh failed — run capture_real_session.py\" with title \"Grocery agent: session\"" 2>/dev/null
+    echo "$(date -Iseconds) SESSION: $KA"
+else
+    echo "$(date -Iseconds) session: $KA"
+fi
+
 # Weekly upstream update check (stamp file throttles to every 7 days).
 STAMP=data/.last-update-check
 if [[ ! -f "$STAMP" || -n "$(find "$STAMP" -mtime +7 2>/dev/null)" ]]; then

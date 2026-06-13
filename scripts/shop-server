@@ -1,0 +1,4 @@
+#!/bin/sh
+# Single-command launcher for the hash-patched shop server (usable as an MCP "command").
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/../.venv/bin/python" "$DIR/shop_server.py" "$@"

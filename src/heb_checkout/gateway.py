@@ -24,10 +24,15 @@ from .server import mcp as checkout
 
 
 def _shop_command() -> str:
-    # Same venv as this process unless overridden (Docker, custom layouts).
-    return os.environ.get(
-        "TEXAS_GROCERY_CMD", str(Path(sys.executable).parent / "texas-grocery-mcp")
-    )
+    # Prefer our launcher (applies config/graphql-hashes.json overrides for HEB's
+    # rotating persisted-query hashes); fall back to the bare console script.
+    override = os.environ.get("TEXAS_GROCERY_CMD")
+    if override:
+        return override
+    launcher = config.agent_home() / "scripts" / "shop-server"
+    if launcher.exists():
+        return str(launcher)
+    return str(Path(sys.executable).parent / "texas-grocery-mcp")
 
 
 def build_gateway() -> FastMCP:

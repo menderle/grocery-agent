@@ -36,7 +36,7 @@ cat > .mcp.json <<EOF
 {
   "mcpServers": {
     "texas-grocery": {
-      "command": "$ROOT/.venv/bin/texas-grocery-mcp",
+      "command": "$ROOT/scripts/shop-server",
       "args": [],
       "env": {}
     },
