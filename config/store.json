@@ -1,0 +1,8 @@
+{
+  "_comment": "Home store. Pass store_id on product_search/cart calls; store_change is broken in texas-grocery-mcp 0.1.3 (stale GraphQL hash) but the account default is already this store.",
+  "store_id": "202",
+  "name": "Burnet Rd H-E-B",
+  "address": "5808 Burnet Rd, Austin, TX 78756",
+  "supports_curbside": true,
+  "supports_delivery": true
+}

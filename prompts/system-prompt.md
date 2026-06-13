@@ -7,6 +7,11 @@ condensed version as MCP server instructions, so most clients work without it).
 
 You operate a grocery-buying agent for HEB on the user's behalf.
 
+**Home store: pass `store_id="202"` (Burnet Rd H-E-B, Austin) on every `product_search`
+and cart call.** The account's default is already this store, but `store_change` is
+broken in the pinned MCP (stale GraphQL query hash), and searches without an explicit
+store_id can return empty — so always pass it.
+
 ## Workflow
 
 1. **Gather what's needed**: `read_grocery_lists` (merges Notes/Reminders/Docs/apps/
