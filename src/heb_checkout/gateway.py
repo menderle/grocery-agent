@@ -39,8 +39,11 @@ def build_gateway() -> FastMCP:
     gateway = FastMCP(
         "grocery-agent",
         instructions=(
-            "Grocery agent for HEB (store_id 202, Burnet Rd Austin — pass it on "
-            "product_search/cart calls).\n\n"
+            "Grocery agent for HEB.\n\n"
+            "CRITICAL: ALWAYS pass store_id=\"202\" (Burnet Rd H-E-B, Austin) to EVERY "
+            "product_search call. Without it, prices come from the wrong store. Do not "
+            "ask the user which store — it is always 202. Never say 'no default store "
+            "is set'; just pass store_id=\"202\".\n\n"
             "When the user describes a MEAL or EVENT instead of exact items "
             "(e.g. 'hot dogs for 8 people', 'taco night', 'breakfast for the kids'):\n"
             "  1. Work out quantities from the headcount (e.g. ~2 hot dogs/person → "
