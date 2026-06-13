@@ -39,10 +39,14 @@ install-launchd:    ## register the HTTP server + heartbeat as LaunchAgents (thi
 	sed "s|__HOME__|$(HOME_DIR)|g" deploy/launchd/com.grocery-agent.session-sync.plist > ~/Library/LaunchAgents/com.grocery-agent.session-sync.plist
 	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.session-sync.plist 2>/dev/null || true
 	launchctl load ~/Library/LaunchAgents/com.grocery-agent.session-sync.plist
+	sed "s|__HOME__|$(HOME_DIR)|g" deploy/launchd/com.grocery-agent.parked-chrome.plist > ~/Library/LaunchAgents/com.grocery-agent.parked-chrome.plist
+	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.parked-chrome.plist 2>/dev/null || true
+	launchctl load ~/Library/LaunchAgents/com.grocery-agent.parked-chrome.plist
 	launchctl load ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist
-	@echo "LaunchAgents installed. Logs: /tmp/heb-checkout.log /tmp/grocery-heartbeat.log"
+	@echo "LaunchAgents installed (server, heartbeat, session-sync, parked-chrome)."
 
 uninstall-launchd:
-	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.server.plist 2>/dev/null || true
-	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist 2>/dev/null || true
-	rm -f ~/Library/LaunchAgents/com.grocery-agent.server.plist ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist
+	for j in server heartbeat session-sync parked-chrome; do \
+		launchctl unload ~/Library/LaunchAgents/com.grocery-agent.$$j.plist 2>/dev/null || true; \
+		rm -f ~/Library/LaunchAgents/com.grocery-agent.$$j.plist; \
+	done

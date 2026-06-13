@@ -33,6 +33,9 @@ paths derive from `GROCERY_AGENT_HOME`, and `data/` is gitignored.
      A Mac mini (Phase 5) removes that.
 - **Maintenance they'll hit:** session re-login if the parked Chrome logs out, and the
   occasional stale-hash refresh — both one-command fixes in `docs/TROUBLESHOOTING.md`.
+- **Phone access needs a paid Claude plan** (Pro/Max/Team) for custom connectors, and the
+  endpoint is public-but-auth-gated (Tailscale Funnel) — see TROUBLESHOOTING. Desktop
+  Claude Code on their Mac needs neither.
 
 So: shareable as a "set it up together" project for a technical friend today; a polished
 "download and go" product after OAuth + the always-on host.

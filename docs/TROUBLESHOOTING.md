@@ -31,6 +31,19 @@ The "Add custom connector" dialog only has OAuth fields — no place for a stati
 - **The real fix (pending):** implement OAuth on the gateway (Google login, restricted to
   your email) — then real phone ordering is safe. See the OAuth task.
 
+### Why the endpoint must be PUBLIC (and Funnel isn't "private")
+The Claude app's custom connector is reached **by Anthropic's servers, not your phone
+directly** — it's server-side. So the gateway URL must be reachable from the public
+internet. That's why we use **Tailscale Funnel** (which exposes publicly, gated by
+token/OAuth), *not* plain private Tailscale — a tailnet-only address is unreachable by
+Anthropic's backend and the connector would never connect. Cloudflare tunnel and Tailscale
+Funnel have the **same** "public, auth-gated" posture; Funnel just gives a stable URL.
+
+### Custom connectors require a paid Claude plan
+Pro / Max / Team / Enterprise. On a free plan the "Add custom connector" option doesn't
+appear. (The agent still works fully from **Claude Code on the Mac** with no plan gate —
+the connector is only for the phone/web app.)
+
 ---
 
 ## HEB session ("401 Unauthorized", tools error out)
@@ -76,6 +89,28 @@ At the moment of any request, on the host Mac:
 5. **Dry-run / auth posture** as intended (test vs real).
 
 This laptop-must-be-awake limit is exactly what the **Phase 5 Mac mini** removes.
+
+### After a reboot (or if Chrome crashes)
+The four launchd jobs (`server`, `heartbeat`, `session-sync`, `parked-chrome`) all start
+at login. `parked-chrome` re-launches the Chrome window automatically (idempotent, every
+5 min):
+- If the profile's HEB login **survived**, the agent is fully back with no action.
+- If HEB **logged it out**, the window opens logged-out; the heartbeat notifies you, and
+  you re-run `scripts/start_parked_chrome.sh` (or just log in again in the window).
+- Re-`make install-launchd` after a fresh clone or `git pull` to (re)register all four.
+
+## Tool quirks worth knowing (when scripting against the shop tools directly)
+
+- `cart_add` and `cart_remove` are two-step: the first call returns a **preview**; pass
+  `confirm=true` to actually do it.
+- `cart_add` wants **both** `product_id` (short id) **and** `sku_id` (longer id) from the
+  same `product_search` result, or it may report "added" without verifying.
+- **Variable-weight items** (bananas "avg 2.4 lbs", deli meats) make the cart subtotal and
+  the checkout total differ by a little — normal. `place_order`'s 10%-over guard tolerates
+  it; a bigger gap aborts the order rather than charging blind.
+- Always pass `store_id` to `product_search` (the gateway instructions enforce this).
+- The model on the phone/desktop handles all of the above automatically — these notes are
+  for when you call the tools directly in a script.
 
 ## Security posture cheat-sheet
 

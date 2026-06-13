@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.grocery-agent.parked-chrome</string>
+    <!-- Keeps the parked Chrome (HEB session source) alive across reboots and crashes.
+         start_parked_chrome.sh is idempotent: it relaunches Chrome only if the debug
+         port is down. If the profile's HEB session survived, the agent is fully back
+         automatically; if it logged out, the heartbeat notifies you to log in again. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>__HOME__/scripts/start_parked_chrome.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/grocery-parked-chrome.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/grocery-parked-chrome.log</string>
+</dict>
+</plist>
