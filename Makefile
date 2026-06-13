@@ -36,6 +36,9 @@ install-launchd:    ## register the HTTP server + heartbeat as LaunchAgents (thi
 	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.server.plist 2>/dev/null || true
 	launchctl load ~/Library/LaunchAgents/com.grocery-agent.server.plist
 	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist 2>/dev/null || true
+	sed "s|__HOME__|$(HOME_DIR)|g" deploy/launchd/com.grocery-agent.session-sync.plist > ~/Library/LaunchAgents/com.grocery-agent.session-sync.plist
+	launchctl unload ~/Library/LaunchAgents/com.grocery-agent.session-sync.plist 2>/dev/null || true
+	launchctl load ~/Library/LaunchAgents/com.grocery-agent.session-sync.plist
 	launchctl load ~/Library/LaunchAgents/com.grocery-agent.heartbeat.plist
 	@echo "LaunchAgents installed. Logs: /tmp/heb-checkout.log /tmp/grocery-heartbeat.log"
 
