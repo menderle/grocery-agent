@@ -9,19 +9,20 @@ from pathlib import Path
 from fastmcp import Client
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = {"mcpServers": {"shop": {"command": str(ROOT / ".venv" / "bin" / "texas-grocery-mcp"), "args": []}}}
+CONFIG = {"mcpServers": {"shop": {"command": str(ROOT / "scripts" / "shop-server"), "args": []}}}
 
 
 async def main() -> int:
+    """Keep the HEB session warm. session_refresh auto-logs-in with the saved Keychain
+    credentials; it works most of the time but HEB's Incapsula intermittently 401s it.
+    On failure the caller (heartbeat) notifies and the fix is scripts/capture_real_session.py.
+    Retried every 30 min, a transient 401 usually clears on the next tick."""
     async with Client(CONFIG) as c:
-        r = await c.call_tool("session_status", {})
-        d = r.data
-        hours = d.get("time_remaining_hours")
+        d = (await c.call_tool("session_status", {})).data
         if d.get("authenticated") and not d.get("refresh_recommended"):
-            print(f"session ok, {hours}h remaining")
+            print(f"session ok, {d.get('time_remaining_hours')}h remaining")
             return 0
-        r = await c.call_tool("session_refresh", {})
-        status = r.data.get("status", "unknown")
+        status = (await c.call_tool("session_refresh", {})).data.get("status", "unknown")
         print(f"refresh: {status}")
         return 0 if status in ("success", "refreshed", "ok") else 1
 

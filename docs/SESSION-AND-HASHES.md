@@ -14,9 +14,23 @@ cold. The working approach captures a session from your **real Chrome**:
 
 Launches genuine Chrome (debug port + dedicated profile under `profiles/heb-chrome`),
 you log in by hand, and it writes cookies + the reese84 trust token to
-`~/.texas-grocery-mcp/auth.json`. Once warm, the package's headless `session_refresh`
-works (~9s) and the launchd heartbeat keeps it alive (`scripts/keepalive.py`). Re-run
-the capture only if you get logged out and the heartbeat notifies you.
+`~/.texas-grocery-mcp/auth.json`.
+
+**Refresh reliability (important):** once warm, the package's headless `session_refresh`
+auto-logs-in with the saved Keychain credentials and works *most* of the time (~9s). But
+Incapsula fingerprints Playwright-driven navigation and intermittently returns 401 — and
+it 401s any Playwright browser regardless of profile warmth (tested). So the model is:
+
+- `scripts/keepalive.py` (run by the heartbeat every 30 min) refreshes before expiry.
+- A transient 401 usually clears on the next tick — the GraphQL API calls use plain
+  httpx with the cookies (no browser), so they keep working while reese84 is valid.
+- If refresh fails repeatedly, the heartbeat sends a macOS notification and the fix is
+  re-running `capture_real_session.py` (~2 min). A genuinely human login is the only
+  thing Incapsula never blocks; a throwaway profile can't self-re-auth (no HEB password
+  stored in it), so it's not a substitute for the capture step.
+
+For max uptime (Phase 5 / Mac mini) the most robust setup is a residential IP plus a
+genuine Chrome parked on heb.com that the agent CDP-reads.
 
 ## 2. Rotating GraphQL persisted-query hashes (upstream issue #19)
 
