@@ -27,7 +27,7 @@ echo "==> installing Chromium for Playwright (~100MB, first run only)"
 if [ ! -f .env ]; then
     TOKEN=$(openssl rand -hex 32)
     sed "s/change-me-long-random-string/$TOKEN/" config/.env.example > .env
-    echo "==> wrote .env with a fresh MCP_BEARER_TOKEN"
+    echo "==> wrote .env with a fresh LIST_DROP_TOKEN (set OAUTH_* for phone access — see SETUP.md)"
 fi
 
 # 4. MCP registration for this machine's absolute paths (Claude Code/Desktop pick up

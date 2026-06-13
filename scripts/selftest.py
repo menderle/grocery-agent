@@ -18,13 +18,16 @@ shutil.copy(repo / "config" / "policy.yaml", tmp + "/config/policy.yaml")
 
 from heb_checkout import approvals, audit, policy  # noqa: E402
 
-noon = datetime(2026, 6, 12, 12, 0)
+# Use TODAY's real date: audit.new_record() stamps with the real clock, so the
+# max_orders_per_day "orders today" check only lines up if the test evaluates as-of today.
+_t = datetime.now()
+noon = _t.replace(hour=12, minute=0, second=0, microsecond=0)
 
 d = policy.evaluate(80.0, now=noon)
 assert d.action == "needs_approval", d
 d = policy.evaluate(250.0, now=noon, approved=True)
 assert d.action == "blocked" and "per_order" in d.reason, d
-d = policy.evaluate(50.0, now=datetime(2026, 6, 12, 23, 30))
+d = policy.evaluate(50.0, now=noon.replace(hour=23, minute=30))
 assert d.action == "blocked" and "quiet" in d.reason, d
 d = policy.evaluate(80.0, now=noon, approved=True)
 assert d.action == "allow", d

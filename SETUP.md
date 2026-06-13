@@ -108,19 +108,37 @@ total.
    Mac mini migration removes (`make migrate`, then `scripts/install.sh` + `make
    restore` on the new box; same for the Docker path).
 
-## Step 6 — Phone ordering (~20 min) **[you + agent]**
+## Step 6 — Phone ordering with OAuth (~25 min) **[you + agent]**
 
-1. Install cloudflared, then `cloudflared tunnel login` and
-   `cloudflared tunnel create grocery-agent`.
-2. Route a hostname (yours or Cloudflare-provided) to `http://127.0.0.1:8787` and run
-   the tunnel as a service.
-3. On claude.ai → Settings → Connectors → **Add custom connector** →
-   URL `https://<your-tunnel-host>/mcp`, auth header `Bearer <MCP_BEARER_TOKEN from .env>`.
-4. From the Claude phone app: "what's in my HEB cart?" — if that answers, phone
-   ordering works end to end.
+The Claude app's custom connector authenticates via **OAuth only** (no token field), so
+the gateway uses Google login restricted to your email. One-time setup:
 
-The same tunnel also exposes `POST /list` (the list drop-box used by Shortcuts and
-webhooks below) and `GET /health`.
+**a. Public URL** — run `zsh scripts/setup_tailscale_funnel.sh` (Tailscale Funnel; gives a
+stable `https://<machine>.<tailnet>.ts.net`). That origin is your `OAUTH_BASE_URL`.
+
+**b. Google OAuth app** (Google Cloud Console, free, ~10 min):
+1. New project → **APIs & Services → OAuth consent screen** → **External**, leave in
+   **Testing**, add your Gmail as a **Test user**.
+2. **Credentials → Create OAuth client ID → Web application**.
+3. **Authorized redirect URI** = `<OAUTH_BASE_URL>/auth/callback`
+   (e.g. `https://maurices-macbook-air.taile913b1.ts.net/auth/callback`). Nothing else.
+4. Copy the **Client ID** and **Client secret**.
+
+**c. Configure** `.env`: set `OAUTH_BASE_URL`, `GOOGLE_OAUTH_CLIENT_ID`,
+`GOOGLE_OAUTH_CLIENT_SECRET`, `OAUTH_ALLOWED_EMAILS=you@gmail.com`; **remove**
+`MCP_ALLOW_NO_AUTH`. Restart: `make install-launchd` (or reload the server job).
+
+**d. Add the connector** — claude.ai → Settings → Connectors → **Add custom connector** →
+URL `<OAUTH_BASE_URL>/mcp`, **both OAuth fields BLANK** (dynamic registration). Save →
+**Connect** → sign in with your allowed Google account → Connected. (A different Google
+account signs in at Google but the server returns 403 — by design.)
+
+**e. Test** from the phone: "what's in my HEB cart?" — answers = OAuth works end to end.
+
+Until you finish OAuth, the temporary test path is `zsh scripts/enable_phone_testing.sh`
+(open + dry-run-forced-on, no charge possible); `scripts/lock_down.sh` reverts it. The
+same tunnel also exposes `POST /list` (Shortcuts/webhooks; uses `LIST_DROP_TOKEN`) and the
+public `GET /health`. Full OAuth troubleshooting: `docs/TROUBLESHOOTING.md`.
 
 ## Step 7 — Feeding the agent (pick the channels you'll actually use)
 
@@ -134,7 +152,7 @@ off at their source.
 | **Apple Reminders** (= **Siri**: "add milk to my Groceries list") | a list named "Groceries" | ✓ (completes) |
 | **Google Doc/Sheet** (shared household list) | share "Anyone with link – Viewer", URL in `lists.yaml` | read-only |
 | **Inbox file** `data/inbox.md` | anything that writes text: iCloud/Dropbox/scripts | ✓ (clears) |
-| **Apple Shortcut / webhooks** | POST text to `https://<tunnel>/list` with the bearer token | ✓ (via inbox) |
+| **Apple Shortcut / webhooks** | POST text to `https://<tunnel>/list` with `LIST_DROP_TOKEN` | ✓ (via inbox) |
 | **iMessage** ("grocery: milk, limes" to yourself) | enable in `lists.yaml` + Full Disk Access; off by default, some new-format messages are skipped | ✓ (marks processed) |
 | **Todoist** | `TODOIST_API_TOKEN` in `.env`; "Groceries" project | ✓ (closes tasks) |
 | **Notion** | `NOTION_API_TOKEN` + `NOTION_PAGE_ID` in `.env`; share page with the integration | ✓ (checks to-dos) |

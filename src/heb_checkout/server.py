@@ -4,10 +4,8 @@ Tools cover the checkout half of the grocery agent (texas-grocery-mcp owns
 search/cart/coupons). Policy is enforced in code in place_order; approval mode,
 spend limits, quiet hours, and order frequency cannot be bypassed by prompting.
 
-Transports:
-  stdio (default)         — local Claude Code / Claude Desktop
-  --http                  — remote access (phone via Cloudflare tunnel); requires
-                            MCP_BEARER_TOKEN, serves /health for the heartbeat.
+Transport: stdio only (local Claude Code / Claude Desktop, or mounted inside
+grocery-gateway). The public, OAuth-secured HTTP endpoint is `grocery-gateway --http`.
 """
 
 import os
@@ -269,19 +267,13 @@ async def health(request):
 
 
 def main() -> None:
+    # heb-checkout is the checkout half only, used over stdio (local Claude Code/Desktop)
+    # or mounted inside grocery-gateway. The PUBLIC, OAuth-secured HTTP endpoint is
+    # grocery-gateway --http — keep one auth path, don't expose this server directly.
     if "--http" in sys.argv:
-        token = os.environ.get("MCP_BEARER_TOKEN")
-        if not token or token == "change-me-long-random-string":
-            sys.exit("Set a real MCP_BEARER_TOKEN before exposing the HTTP transport.")
-        from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
-        mcp.auth = StaticTokenVerifier(tokens={token: {"client_id": "grocery-agent"}})
-        mcp.run(
-            transport="http",
-            host="127.0.0.1",  # only the Cloudflare tunnel reaches this
-            port=int(os.environ.get("MCP_HTTP_PORT", "8787")),
-        )
-    else:
-        mcp.run()
+        sys.exit("Run `grocery-gateway --http` for the public OAuth-secured endpoint; "
+                 "heb-checkout runs over stdio only.")
+    mcp.run()
 
 
 if __name__ == "__main__":

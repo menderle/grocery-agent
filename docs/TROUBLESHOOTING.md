@@ -31,6 +31,32 @@ The "Add custom connector" dialog only has OAuth fields — no place for a stati
 - **The real fix (pending):** implement OAuth on the gateway (Google login, restricted to
   your email) — then real phone ordering is safe. See the OAuth task.
 
+### OAuth (the real fix — Google login restricted to your email)
+The gateway uses FastMCP `GoogleProvider` (an OAuth proxy) + an `OwnerOnly` middleware
+allowlist (`src/heb_checkout/auth.py`). Connector OAuth fields stay **blank** (dynamic
+registration). Debug in this order:
+
+- **Verify discovery over the PUBLIC URL** (`$B` = your `OAUTH_BASE_URL`):
+  - `curl -s -X POST $B/mcp -d '{}'` → **401** with `WWW-Authenticate: Bearer … resource_metadata="$B/.well-known/oauth-protected-resource/mcp"`.
+  - `curl -s $B/.well-known/oauth-protected-resource/mcp` → lists `authorization_servers`.
+  - `curl -s $B/.well-known/oauth-authorization-server` → has `authorization_endpoint`,
+    `token_endpoint`, `registration_endpoint`, and `S256` in `code_challenge_methods_supported`.
+  - `curl -s $B/health` → 200 (must stay public — `OwnerOnly` must NOT gate it).
+- **`OAUTH_BASE_URL` must be the bare public https origin** — no `/mcp`, no trailing
+  slash, https not http. Wrong shape breaks discovery. (The code rejects http/`/mcp`.)
+- **`redirect_uri_mismatch` at Google** → you must register exactly `<OAUTH_BASE_URL>/auth/callback`
+  in the Google app. Claude's own callback (`https://claude.ai/api/mcp/auth_callback`) is
+  set in the code's `allowed_client_redirect_uris`, NOT in Google.
+- **A different Google account gets 403** → intended; only `OAUTH_ALLOWED_EMAILS` connect.
+- **Auth "succeeds" then every call 401s** → audience (RFC 8707) mismatch; leave
+  `resource_base_url` unset so it defaults to `base_url`.
+- **`invalid_scope`** → mitigated by `required_scopes == valid_scopes` in auth.py (fastmcp #1794).
+- **Connects in Claude Code but "disconnected" on claude.ai/Desktop** (fastmcp
+  #2224/#1919/#1737) → watch `/tmp/heb-checkout.log` during the dance; the no-auth
+  dry-run fallback (`enable_phone_testing.sh`) is your stopgap.
+- **Re-login after every restart** → `client_storage` (disk) persists DCR clients+tokens;
+  if you see this, confirm `py-key-value-aio[disk]` is installed and `state/oauth` is writable.
+
 ### Why the endpoint must be PUBLIC (and Funnel isn't "private")
 The Claude app's custom connector is reached **by Anthropic's servers, not your phone
 directly** — it's server-side. So the gateway URL must be reachable from the public

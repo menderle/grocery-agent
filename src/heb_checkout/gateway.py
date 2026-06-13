@@ -89,9 +89,10 @@ def build_gateway() -> FastMCP:
     async def drop_list(request):
         """Text drop-box: POST plain-text items (one per line) into the inbox file.
         Lets Apple Shortcuts, webhooks, or any other agent feed the grocery list.
-        Custom routes bypass MCP auth, so this checks the bearer token itself."""
+        Uses a static LIST_DROP_TOKEN (separate from MCP/OAuth) because Shortcuts can't
+        do an OAuth flow; this route never touches checkout, so a static secret is fine."""
         from starlette.responses import JSONResponse
-        token = os.environ.get("MCP_BEARER_TOKEN", "")
+        token = os.environ.get("LIST_DROP_TOKEN", "")
         sent = request.headers.get("authorization", "")
         if not token or sent != f"Bearer {token}":
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -128,11 +129,11 @@ def main() -> None:
                 sys.exit("Refusing to run no-auth with dry-run OFF — that exposes real "
                          "ordering. Set up OAuth or keep HEB_CHECKOUT_DRY_RUN=true.")
         else:
-            token = os.environ.get("MCP_BEARER_TOKEN")
-            if not token or token == "change-me-long-random-string":
-                sys.exit("Set a real MCP_BEARER_TOKEN before exposing the HTTP transport.")
-            from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
-            gateway.auth = StaticTokenVerifier(tokens={token: {"client_id": "grocery-agent"}})
+            # OAuth: Google login restricted to OAUTH_ALLOWED_EMAILS. This is what
+            # claude.ai connectors authenticate against (no static-token field exists).
+            from .auth import allowed_emails, build_google_auth, OwnerOnly
+            gateway.auth = build_google_auth()
+            gateway.add_middleware(OwnerOnly(allowed_emails()))
         gateway.run(
             transport="http",
             host="127.0.0.1",
