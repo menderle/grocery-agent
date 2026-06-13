@@ -99,11 +99,20 @@ def build_gateway() -> FastMCP:
 def main() -> None:
     gateway = build_gateway()
     if "--http" in sys.argv:
-        token = os.environ.get("MCP_BEARER_TOKEN")
-        if not token or token == "change-me-long-random-string":
-            sys.exit("Set a real MCP_BEARER_TOKEN before exposing the HTTP transport.")
-        from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
-        gateway.auth = StaticTokenVerifier(tokens={token: {"client_id": "grocery-agent"}})
+        no_auth = os.environ.get("MCP_ALLOW_NO_AUTH", "").lower() in ("1", "true", "yes")
+        if no_auth:
+            # Open endpoint — ONLY acceptable while HEB_CHECKOUT_DRY_RUN=true (no charge
+            # possible). claude.ai connectors don't accept a static bearer token, so this
+            # is the temporary path for testing; lock down with OAuth before real orders.
+            if not config.dry_run_default():
+                sys.exit("Refusing to run no-auth with dry-run OFF — that exposes real "
+                         "ordering. Set up OAuth or keep HEB_CHECKOUT_DRY_RUN=true.")
+        else:
+            token = os.environ.get("MCP_BEARER_TOKEN")
+            if not token or token == "change-me-long-random-string":
+                sys.exit("Set a real MCP_BEARER_TOKEN before exposing the HTTP transport.")
+            from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+            gateway.auth = StaticTokenVerifier(tokens={token: {"client_id": "grocery-agent"}})
         gateway.run(
             transport="http",
             host="127.0.0.1",
