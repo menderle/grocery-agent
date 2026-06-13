@@ -226,7 +226,11 @@ async def place(fulfillment: str, slot_text: str | None, order_id: str,
         await human_pause(3.0, 5.0)
         await _shot(page, order_id, "05-confirmation")
         body = " ".join((await page.locator("body").inner_text()).split())
-        conf = re.search(r"[Oo]rder\s*#?\s*(\w[\w-]{4,})", body)
+        # HEB confirmation number looks like "Order # HEB191349502412550144".
+        conf = re.search(r"Order\s*#\s*([A-Z]{2,}[0-9]{6,})", body) or \
+            re.search(r"\b(HEB[0-9]{8,})\b", body)
+        placed_ok = "order is placed" in body.lower() or "order placed" in body.lower()
         return {"status": "placed", "estimated_total": total,
-                "confirmation": conf.group(0) if conf else None,
+                "confirmation": conf.group(1) if conf else None,
+                "placed_confirmed": placed_ok,
                 "screenshots": str(audit.screenshots_dir(order_id))}
