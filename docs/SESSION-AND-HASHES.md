@@ -49,4 +49,4 @@ and other mutation hashes only appear when the action actually fires, so the har
 performs a real add-to-cart to capture them.
 
 `store_change` (`SelectPickupFulfillment`) is also affected and not worth chasing — the
-account default store is used instead; pass `store_id` explicitly (home store: 202).
+account default store is used instead; pass `store_id` explicitly (your store id from `config/store.json`).

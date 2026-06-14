@@ -146,7 +146,7 @@ at login. `parked-chrome` re-launches the Chrome window automatically (idempoten
 | Real (after OAuth) | OAuth (you only) | OFF | yes |
 | **Never** | none | OFF | **blocked in code** |
 
-Get the bearer token (when auth is on): `grep MCP_BEARER_TOKEN .env`.
+Webhook/Shortcuts token: `grep LIST_DROP_TOKEN .env`. Phone auth = OAuth (SETUP.md step 6).
 
 ---
 

@@ -15,10 +15,10 @@ zsh scripts/install.sh
 ```
 
 The installer handles everything machine-specific: Python (via uv, no admin needed),
-pinned dependencies, the Playwright browser, a generated `.env` with a fresh
-`MCP_BEARER_TOKEN`, the `.mcp.json` MCP registration for this machine's paths, and a
-selftest proving the safety layer before anything touches a browser. Re-running it
-is safe (after `git pull`, or on a migrated host).
+pinned dependencies, the Playwright browser, a generated `.env` (with a fresh
+`LIST_DROP_TOKEN`), `config/store.json` from the template, the `.mcp.json` MCP registration
+for this machine's paths, and a selftest proving the safety layer before anything touches a
+browser. Re-running it is safe (after `git pull`, or on a migrated host).
 
 Already installed? Skip ahead.
 
@@ -99,7 +99,7 @@ total.
 
 1. `make install-launchd` — two services start at login:
    - **`grocery-gateway --http`**: the full agent (shopping + checkout + lists) as one
-     HTTP MCP endpoint on `127.0.0.1:8787`, bearer-token-protected, with `/health`.
+     HTTP MCP endpoint on `127.0.0.1:8787`, OAuth-gated (see Step 6), with public `/health`.
    - **Heartbeat** every 30 min: macOS notification if the agent is down, plus a weekly
      PyPI check for texas-grocery-mcp updates (notifies only — the version is pinned;
      upgrades are always a deliberate pin bump + `make selftest`).

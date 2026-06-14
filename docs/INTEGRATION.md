@@ -33,16 +33,27 @@ Two surfaces, pick one:
 ## Remote (HTTP) — phone apps, hosted assistants, other machines
 
 ```sh
-make serve-http        # gateway on 127.0.0.1:8787, bearer-token auth, /health
+make serve-http        # gateway on 127.0.0.1:8787, OAuth-gated, /health (public)
 ```
 
-Expose it with a Cloudflare tunnel (SETUP.md step 6). Then any remote MCP client uses:
+Expose it publicly with **Tailscale Funnel** (primary; stable URL) or a Cloudflare tunnel
+— Anthropic reaches the connector server-side, so the endpoint must be public, gated by
+auth. Full walkthrough: **SETUP.md step 6**.
 
-- URL: `https://<your-host>/mcp`
-- Header: `Authorization: Bearer <MCP_BEARER_TOKEN from .env>`
+**Phone/web (Claude custom connector) → OAuth.** claude.ai connectors authenticate via
+OAuth (Google login), *not* a static token — the connector's OAuth fields are left blank
+(dynamic registration) and access is restricted to `OAUTH_ALLOWED_EMAILS`:
+- URL: `https://<your-funnel-host>/mcp`  (leave OAuth Client ID/Secret blank)
 
-This is how the Claude phone app connects (claude.ai → custom connector), and equally
-how any other hosted LLM with remote-MCP support would.
+**`/list` drop-box (Apple Shortcuts, webhooks, other agents) → static token.** Shortcuts
+can't do OAuth, so this one route uses a static secret:
+```sh
+curl -X POST https://<your-funnel-host>/list \
+  -H "Authorization: Bearer $LIST_DROP_TOKEN" --data-binary $'oat milk\npaper towels'
+```
+
+`GET /health` is public (liveness). Local stdio clients (Claude Code/Desktop) don't need
+any of this.
 
 ## As part of a larger personal-assistant agent
 
@@ -74,7 +85,7 @@ Shortcuts, Zapier/IFTTT webhooks, or **other agents in a PA constellation**:
 
 ```sh
 curl -X POST https://<host>/list \
-  -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
+  -H "Authorization: Bearer $LIST_DROP_TOKEN" \
   --data-binary $'oat milk\npaper towels'
 ```
 

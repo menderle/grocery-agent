@@ -10,7 +10,7 @@ selftest:           ## policy/audit/approvals checks — no network, no browser
 serve:              ## stdio MCP server (local Claude Code/Desktop)
 	.venv/bin/heb-checkout
 
-serve-http:         ## full gateway (shop+checkout) over HTTP for the tunnel/remote clients
+serve-http:         ## full gateway over HTTP for remote/phone (OAuth for phone; LIST_DROP_TOKEN for /list)
 	set -a; [ -f .env ] && . ./.env; set +a; .venv/bin/grocery-gateway --http
 
 snapshot:           ## tar config + data + HEB session for migration to another host

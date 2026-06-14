@@ -1,122 +1,152 @@
-# HEB Grocery Agent
+# 🛒 Grocery Agent
 
-Always-on agent that buys groceries from HEB: shop by chatting with Claude (incl. phone),
-a shared Reminders list, email, or a weekly standing order. Pays with a prepaid debit card
-saved on the HEB account. Checkout autonomy is a policy toggle, enforced in code.
+An always-on personal agent that **buys your groceries from H‑E‑B** — you just talk to it.
+Message Claude on your phone *"order hot dogs for 8 people"* and it figures out the
+quantities, asks about buns and condiments, builds the cart at your store, and checks out —
+paying with a prepaid card you set once. No app-tapping, no forms.
 
-Ordering preference: **HEB natively** (curbside pickup + HEB scheduled delivery — what this
-repo implements) with **Favor** (H-E-B-owned, on-demand ~2h delivery) as the planned fast-
-delivery module. Third-party marketplaces (Instacart etc.) are deliberately out of scope.
+It runs as **MCP servers** (Model Context Protocol), so it works with Claude on desktop and
+phone, and with any other MCP-capable assistant. Money safety is enforced in code, not by
+prompting.
 
-Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
+> **Status:** working and in real use for H‑E‑B curbside/scheduled delivery. On-demand
+> (Favor) is semi-automated. It's a personal, self-hosted project — not affiliated with
+> H‑E‑B or Favor. See [Known limitations](#known-limitations).
 
-**Docs:** [SETUP.md](SETUP.md) (first-run) · [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-(every pitfall we hit + the fix — read this when something breaks) ·
-[docs/SESSION-AND-HASHES.md](docs/SESSION-AND-HASHES.md) (the two HEB gotchas) ·
-[docs/SHARING.md](docs/SHARING.md) (personalize before handing to someone else) ·
-[docs/INTEGRATION.md](docs/INTEGRATION.md) (any LLM / phone / PA agent).
+---
 
-## Pieces
+## What's possible
 
-| Piece | What it does |
-|---|---|
-| [texas-grocery-mcp](https://github.com/mgwalkerjr95/texas-grocery-mcp) | HEB search, cart, coupons, store selection, session refresh — a **PyPI dependency pinned at 0.1.3** in pyproject.toml (installed into the gitignored `.venv/`, never vendored into this repo, never fetched from GitHub at runtime) |
-| `src/heb_checkout/` | Custom MCP: `get_slots`, `preview_order`, `place_order` (dry-run capable), `get_policy`/`set_policy`, `order_history`, wallet management (`update_payment_card`, `list_payment_methods`, `remove_payment_card`), `check_upstream_updates`, `/health` |
-| `config/policy.yaml` | Autonomy mode, spend limits, quiet hours, fulfillment default |
-| `config/lists.yaml` + `src/heb_checkout/lists.py` | List intake: Apple Notes, Apple Reminders (Siri), link-shared Google Doc/Sheet, iMessage (opt-in), Todoist, Notion, inbox file + authenticated `POST /list` drop endpoint |
-| `calendar_events.py`, `replenishment.py` | Smart suggestions: ICS-feed calendar awareness (party → propose supplies) and purchase-cycle replenishment ("milk due in 2 days") |
-| `src/favor_checkout/` | **On-demand delivery via Favor** (H-E-B-owned, ~20-45min/~2h, ≤25 items) — `favor_*` tools, separate parked session, reuses the shared policy/approval/audit engine. Opt-in: one-time `scripts/favor_persistent_login.py`. |
-| `data/` | Staples, preferences, append-only order audit log |
-| `deploy/`, `Dockerfile`, `Makefile` | launchd services, heartbeat, Docker stack, host migration |
+**Talk to it however's easiest:**
+- **Chat / voice with Claude** (desktop or phone) — *"add oat milk and eggs"*, *"order the usual"*.
+- **Siri / Apple Reminders** — *"Hey Siri, add limes to my Groceries list"*; the agent reads it.
+- **Apple Notes, a shared Google Doc, Todoist, Notion, email, or a text file** — jot items anywhere; it merges them all.
+- **A weekly standing order** — re-orders your staples on a schedule, adjusting for what you added during the week.
 
-**→ Step-by-step setup: [SETUP.md](SETUP.md)** (written for a store-bought prepaid
-Mastercard — registration for AVS is mandatory before heb.com will accept it).
+**Two ways to get the food:**
+- **H‑E‑B curbside or scheduled delivery — fully automated.** Search → cart → coupons → pick a time → checkout → place. Hands-off.
+- **Favor on-demand (~20–45 min / ~2 h) — semi-automated.** The agent finds and adds your items; you tap Place in the Favor app (Favor requires an SMS code at checkout that only you can complete).
 
-## New machine / new person? One command
+**It's actually smart about it:**
+- **Meal & headcount reasoning** — *"taco night for 6"* becomes the right quantities, and it asks about the obvious extras before ordering.
+- **Calendar-aware** — sees *"dinner party Saturday"* on your calendar and offers to add supplies.
+- **Replenishment** — learns your purchase cycles from past orders (*"you're about due for milk — add it?"*).
+- **Coupons & substitutions** — clips applicable digital coupons; follows your substitution preferences.
+- **Slot suggestions** — proposes pickup/delivery times that fit your schedule.
+
+**You stay in control:**
+- **Autonomy is a toggle** — `approve` (confirm every order), `auto under a threshold`, or `full auto`.
+- **Spend limits enforced in code** — per-order, rolling weekly, and monthly caps that block in *every* mode (approval can't override them).
+- **Dry-run by default** — checkout stops one click before purchase and screenshots it, until you turn real ordering on.
+- **Prepaid card** — the agent never sees card numbers; the card's own balance is the final backstop.
+
+---
+
+## What you need before it can place an order
+
+Ordering groceries touches a real account and real money, so a few things must be set up.
+**[SETUP.md](SETUP.md) is the step-by-step guide** — this is the overview of what's required.
+
+**Required (to order at all, from your computer):**
+1. **An H‑E‑B account with a home store**, and one manual curbside order placed yourself —
+   this activates your account for online ordering.
+2. **A payment method saved on your H‑E‑B account** — a [Privacy.com](https://privacy.com)
+   virtual card (recommended) or a registered reloadable prepaid Visa/Mastercard. You enter
+   it once on heb.com; it never enters the agent.
+3. **A Mac to run it on** (kept awake) and the one-command install (below).
+4. **A one-time H‑E‑B login** in a real browser the agent then reuses (H‑E‑B blocks
+   automated logins, so this is done by hand once).
+5. **Your home store id** in `config/store.json` (the installer creates it from a template;
+   ask the agent *"search HEB stores near <your address>"* to find your id).
+
+**Additional, only if you want to order from your phone:**
+6. **A Google OAuth app** (free, ~10 min) so the phone connector authenticates *you only*, and
+   **a Tailscale tunnel** to reach your Mac. (Phone connectors need a paid Claude plan.)
+
+**Additional, only for Favor on-demand (optional):**
+7. **A Favor account** (separate phone+SMS signup) and a one-time login. Remember: Favor
+   orders are *prepared* by the agent but *placed* by you (SMS gate).
+
+Until set up, nothing can be charged — and `HEB_CHECKOUT_DRY_RUN=true` keeps it that way
+while you verify everything.
+
+---
+
+## Quick start
 
 ```sh
-git clone <this repo> grocery-agent && cd grocery-agent && zsh scripts/install.sh
+git clone <this repo> grocery-agent && cd grocery-agent
+zsh scripts/install.sh        # Python (via uv), deps, Chromium, secrets, store template, selftest
 ```
 
-Installs Python/deps/Chromium, generates secrets and MCP registration for that machine,
-and proves the safety layer with a selftest. Works with **any MCP-capable LLM client**,
-not just Claude — and `grocery-gateway` exposes the whole agent as one server that a
-larger personal-assistant agent can mount as its "grocery" capability. See
-[docs/INTEGRATION.md](docs/INTEGRATION.md) and [prompts/system-prompt.md](prompts/system-prompt.md).
+Then follow **[SETUP.md](SETUP.md)** for the account/login/card steps above. Works with any
+MCP-capable LLM client; `grocery-gateway` exposes the whole agent as one server a larger
+personal-assistant agent can mount as its "grocery" capability.
 
-## Known limitations (read before relying on it)
+---
 
-- **Favor can't auto-place orders.** Favor (on-demand) requires SMS phone verification on
-  *every* checkout — confirmed: even a logged-in, once-verified profile is re-challenged.
-  So Favor is **semi-automated**: the agent finds + adds items to your Favor cart, then you
-  open the Favor app and tap Place (entering the texted code). HEB scheduled curbside/
-  delivery is the fully hands-off path.
-- **Always-on needs the host awake.** The agent, its browser session, and the OAuth gateway
-  run on *your* Mac (via launchd + Tailscale) — not in the cloud. If the machine sleeps or is
-  off, the phone/remote path is down. A dedicated always-on box (Mac mini) is the fix.
-- **HEB automation is unofficial.** Checkout drives heb.com via a real browser session; it
-  can break on site changes and could trip bot detection or run afoul of HEB's ToS. Money
+## How it works
+
+```
+ You (chat / phone / Siri / email / schedule)
+        │
+        ▼
+ grocery-gateway  ── one MCP endpoint, OAuth-gated for remote/phone ──┐
+   • texas-grocery-mcp  → H-E-B GraphQL (search, cart, coupons, store)  │ runs on your Mac
+   • heb-checkout       → Playwright → heb.com checkout (policy-gated)   │ (Tailscale for phone)
+   • favor-checkout     → favordelivery.com (build cart; you place)      │
+   • policy engine + approvals + audit (the money-safety core)          │
+        │                                                                │
+        ▼                                                                │
+ Payment: a prepaid card saved on your H-E-B account ────────────────────┘
+```
+
+The checkout half drives a real logged-in browser session (kept warm automatically). The
+**only** code path that spends money is `place_order`, and it consults your policy + spend
+limits before every order.
+
+| Area | Where |
+|---|---|
+| Checkout, policy, approvals, audit, wallet | `src/heb_checkout/` |
+| On-demand (Favor) | `src/favor_checkout/` |
+| One MCP endpoint for everything | `grocery-gateway` (`src/heb_checkout/gateway.py`) |
+| Autonomy mode + spend limits | `config/policy.yaml` |
+| List intake sources | `config/lists.yaml`, `src/heb_checkout/lists.py` |
+| Setup / migration / always-on | `scripts/`, `deploy/`, `Makefile`, `Dockerfile` |
+
+---
+
+## Known limitations
+
+- **Favor can't auto-place orders.** Favor requires SMS verification on *every* checkout
+  (a fraud gate — confirmed even for a logged-in, pre-verified session). Favor is
+  semi-automated: the agent builds the cart, you tap Place + enter the code. H‑E‑B scheduled
+  curbside/delivery is the fully hands-off path.
+- **Always-on needs the host awake.** The agent and its browser session run on *your* Mac
+  (launchd + Tailscale), not in the cloud. If it sleeps, the phone/remote path is down. A
+  dedicated always-on box (e.g. a Mac mini) removes that.
+- **H‑E‑B automation is unofficial.** Checkout drives heb.com via a real browser; it can
+  break on site changes and could trip bot detection or run afoul of H‑E‑B's Terms. Money
   safeguards: dry-run default, the approval gate, and the spend limits in `config/policy.yaml`.
 
-## Setup — manual steps (Maurice)
+---
 
-1. **HEB account (Phase 0):** create/verify account on heb.com, set home store, place one
-   manual curbside order to learn the flow.
-2. **Card:** create a [Privacy.com](https://privacy.com) virtual card, merchant-locked to
-   H-E-B with a monthly limit (or a registered reloadable prepaid Visa/MC — must have your
-   name + billing address on file or AVS declines). Save it **once** as the default payment
-   method on heb.com. Card numbers never enter this repo, the agent, or its logs.
-3. **First login:** in Claude (this project), ask to "authenticate with HEB" — the
-   texas-grocery MCP opens a browser for login and stores the session at
-   `~/.texas-grocery-mcp/auth.json` (shared with checkout). Credentials go in the macOS keyring.
-4. **Secrets:** `cp config/.env.example .env`, set a long random `MCP_BEARER_TOKEN`.
-5. **Phone access:** create a Cloudflare tunnel (`cloudflared tunnel create grocery-agent`)
-   pointing at `http://127.0.0.1:8787`, then add `https://<tunnel-host>/mcp` as a custom
-   connector on claude.ai with the bearer token → orders from the Claude phone app.
-6. **Always-on (this Mac):** `make install-launchd` (MCP server + 30-min heartbeat that
-   notifies if the agent is down). Keep the Mac plugged in; Phase 5 of the plan moves this
-   to a Mac mini with `make migrate`.
+## Docs
 
-## Safety model
+- **[SETUP.md](SETUP.md)** — full step-by-step first-run (accounts, card, login, phone, Favor).
+- **[docs/SHARING.md](docs/SHARING.md)** — what to personalize before handing it to someone else.
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — every pitfall hit + the fix.
+- **[docs/SESSION-AND-HASHES.md](docs/SESSION-AND-HASHES.md)** — the two H‑E‑B gotchas (session, API hashes).
+- **[docs/INTEGRATION.md](docs/INTEGRATION.md)** — wiring into any LLM / phone / personal-assistant agent.
+- **[prompts/system-prompt.md](prompts/system-prompt.md)** — the agent's operating instructions.
 
-- `place_order` is the **only** code path that can spend money. It consults
-  `config/policy.yaml` + the audit log before every order: mode
-  (`approve` / `auto_under_threshold` / `full_auto`), per-order / rolling weekly / monthly
-  spend limits (hard blocks, not overridable by approval), max orders per day, quiet hours.
-- `HEB_CHECKOUT_DRY_RUN=true` (current default everywhere) stops one click before purchase
-  and screenshots the final screen. Flip to `false` only after Phase 2 verification.
-- Live orders abort if the on-screen total exceeds the policy-evaluated total by >10%.
-- Every attempt (placed / dry-run / blocked / pending) is an audit record in `data/orders/`.
-- **Card handling:** the agent manages the HEB wallet (add/swap/remove cards), but full
-  card numbers stay out of logs and audit records (last-4 only). Preferred intake is the
-  local keyring vault (`scripts/add_card.py` → "switch HEB to my new card" → vault entry
-  deleted after save); chat-provided details are supported but persist in the transcript.
-- Final backstop independent of all software: the prepaid card's own balance/limit.
+## Safety model (in brief)
 
-Change behavior by talking to the agent: "switch to full auto", "set my weekly limit to
-$250", "make this one delivery" — these edit `policy.yaml` via `set_policy` (allow-listed
-fields only).
+`place_order` is the only money path; it checks `config/policy.yaml` + the audit log before
+every order — mode (`approve` / `auto_under_threshold` / `full_auto`), per-order / weekly /
+monthly spend caps (hard, not approval-overridable), max orders per day, quiet hours. Live
+orders abort if the on-screen total exceeds the approved total by >10%. Card numbers never
+enter the agent (the agent selects your saved card; wallet logs are last-4 only). Adjust by
+asking: *"switch to full auto"*, *"set my weekly limit to $250"*.
 
-## Verify
-
-```sh
-make selftest        # policy engine, audit, approvals — no network
-make serve-http &    # then: curl localhost:8787/health
-```
-
-Phase 2 (after first HEB login): run `preview_order` and dry-run `place_order` for both
-pickup and delivery, review screenshots in `data/orders/screenshots/`, fix
-`SELECTORS` in `src/heb_checkout/checkout_driver.py` against the real DOM — they are
-best-effort until verified — then one watched live order (~$20) in `approve` mode.
-
-## Status
-
-- [x] Scaffold, venv (Python 3.12 via uv), texas-grocery-mcp 0.1.3 + Chromium installed
-- [x] heb-checkout MCP: policy engine (14-check selftest), approvals, audit, HTTP+bearer, /health
-- [x] Portability: Dockerfile/compose, snapshot/restore/migrate, launchd + heartbeat
-- [ ] Phase 0: HEB account + prepaid card (manual)
-- [ ] Phase 2 verification: selectors against live logged-in checkout, first live order
-- [ ] Phase 4: tunnel + phone connector, Reminders/email sweeps, weekly standing order
-- [ ] Later: `favor_checkout` driver for on-demand delivery — same pattern as the HEB driver
-      (Playwright against favordelivery.com web ordering, no public API exists, prepaid card
-      saved on the Favor account, same policy engine gates `place_order`)
+Verify the safety core anytime: `make selftest` (no network, no browser).
