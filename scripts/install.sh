@@ -36,6 +36,11 @@ if [ ! -f config/store.json ]; then
     echo "==> wrote config/store.json — EDIT IT with your store (ask the agent 'search HEB stores near <address>')"
 fi
 
+# 3c. optional local web UI note (additive; the Claude/MCP path needs none of this)
+if ! grep -q '^ANTHROPIC_API_KEY=' .env 2>/dev/null; then
+    echo "==> (optional) Local web UI: add ANTHROPIC_API_KEY to .env, then run 'make web' (see docs/WEB-UI.md)"
+fi
+
 # 4. MCP registration for this machine's absolute paths (Claude Code/Desktop pick up
 #    .mcp.json from the project root; other clients: see docs/INTEGRATION.md)
 cat > .mcp.json <<EOF
@@ -71,4 +76,5 @@ Install complete. Next steps (SETUP.md has details):
   3. Open your LLM client in this folder and say "authenticate with HEB"
   4. Verify checkout in dry-run mode before anything live
   5. Always-on:  make install-launchd     Phone/remote:  docs/INTEGRATION.md
+  6. Optional local web UI:  add ANTHROPIC_API_KEY to .env, then  make web   (docs/WEB-UI.md)
 EOF

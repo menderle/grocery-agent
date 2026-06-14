@@ -2,7 +2,7 @@ HOME_DIR := $(shell pwd)
 SNAPSHOT := grocery-agent-snapshot.tar.gz
 AUTH_STATE := $(HOME)/.texas-grocery-mcp
 
-.PHONY: selftest serve serve-http snapshot restore migrate install-launchd uninstall-launchd
+.PHONY: selftest serve serve-http web snapshot restore migrate install-launchd uninstall-launchd favor-login
 
 selftest:           ## policy/audit/approvals checks — no network, no browser
 	.venv/bin/python scripts/selftest.py
@@ -12,6 +12,9 @@ serve:              ## stdio MCP server (local Claude Code/Desktop)
 
 serve-http:         ## full gateway over HTTP for remote/phone (OAuth for phone; LIST_DROP_TOKEN for /list)
 	set -a; [ -f .env ] && . ./.env; set +a; .venv/bin/grocery-gateway --http
+
+web:                ## local web UI on 127.0.0.1:8788 (Claude agent over the in-process gateway; needs ANTHROPIC_API_KEY)
+	set -a; [ -f .env ] && . ./.env; set +a; .venv/bin/grocery-web
 
 snapshot:           ## tar config + data + HEB session for migration to another host
 	zsh scripts/snapshot.sh

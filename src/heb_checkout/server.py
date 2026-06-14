@@ -14,8 +14,9 @@ from datetime import datetime
 
 from fastmcp import FastMCP
 
-from . import approvals, audit, checkout_driver, config, policy
+from . import approvals, audit, checkout_driver, config, policy, preferences
 from .checkout_driver import parse_dollars
+from .locking import checkout_lock
 
 mcp = FastMCP("heb-checkout")
 
@@ -96,65 +97,89 @@ async def place_order(
     except Exception as e:
         return {"status": "error", "reason": f"could not load policy: {e}"}
 
-    approved = False
-    approval = None
-    if approval_id:
-        approval = approvals.consume(approval_id)  # raises if expired/unknown
-        expected_total = approval["order_total"]
-        fulfillment = approval["fulfillment"]
-        slot_text = approval.get("slot_text") or slot_text
-        items = items or approval.get("items") or None
-        approved = True
+    # One cross-process lock around the whole critical section (approval consume →
+    # checkout → audit) so the web UI and the Claude connector can't double-place or
+    # both consume one approval. Uncontended (instant) for a single interface; only the
+    # rare simultaneous-checkout case waits. Money-safety semantics below are unchanged.
+    with checkout_lock():
+        approved = False
+        approval = None
+        if approval_id:
+            approval = approvals.consume_locked(approval_id)  # lock already held
+            expected_total = approval["order_total"]
+            fulfillment = approval["fulfillment"]
+            slot_text = approval.get("slot_text") or slot_text
+            items = items or approval.get("items") or None
+            approved = True
 
-    decision = policy.evaluate(expected_total, approved=approved)
-    if decision.action == "blocked":
-        if approved:
-            approvals.restore(approval)  # a policy block isn't a 'no' — keep the yes usable
-        audit.new_record("blocked", total=expected_total, reason=decision.reason)
-        return {"status": "blocked", "reason": decision.reason}
-    if decision.action == "needs_approval":
-        approval = approvals.create(
-            expected_total, fulfillment, slot_text,
-            expiry_hours=pol.get("approval", {}).get("expiry_hours", 4),
-            items=items,
-        )
-        audit.new_record("pending_approval", total=expected_total, approval_id=approval["id"])
-        return {
-            "status": "needs_approval",
-            "approval_id": approval["id"],
-            "expires_at": approval["expires_at"],
-            "reason": decision.reason,
-            "next_step": "show the user the cart summary and total; on a yes, call place_order with this approval_id",
-        }
+        decision = policy.evaluate(expected_total, approved=approved)
+        if decision.action == "blocked":
+            if approved:
+                approvals.restore(approval)  # a policy block isn't a 'no' — keep the yes usable
+            audit.new_record("blocked", total=expected_total, reason=decision.reason)
+            return {"status": "blocked", "reason": decision.reason}
+        if decision.action == "needs_approval":
+            approval = approvals.create(
+                expected_total, fulfillment, slot_text,
+                expiry_hours=pol.get("approval", {}).get("expiry_hours", 4),
+                items=items,
+            )
+            audit.new_record("pending_approval", total=expected_total, approval_id=approval["id"])
+            return {
+                "status": "needs_approval",
+                "approval_id": approval["id"],
+                "expires_at": approval["expires_at"],
+                "reason": decision.reason,
+                "next_step": "show the user the cart summary and total; on a yes, call place_order with this approval_id",
+            }
 
-    dry_run = config.dry_run_default()
-    rec = audit.new_record("dry_run" if dry_run else "attempt", total=expected_total,
-                           fulfillment=fulfillment, slot=slot_text, reason=decision.reason)
-    try:
-        result = await checkout_driver.place(
-            fulfillment, slot_text, rec["id"],
-            dry_run=dry_run, max_total=round(expected_total * 1.10, 2),
-        )
-    except Exception:
-        # place() never raises AFTER the commit click, so any exception here is
-        # pre-commit and safe to restore the approval for a retry.
-        if approved:
+        dry_run = config.dry_run_default()
+        rec = audit.new_record("dry_run" if dry_run else "attempt", total=expected_total,
+                               fulfillment=fulfillment, slot=slot_text, reason=decision.reason)
+        try:
+            result = await checkout_driver.place(
+                fulfillment, slot_text, rec["id"],
+                dry_run=dry_run, max_total=round(expected_total * 1.10, 2),
+            )
+        except Exception:
+            # place() never raises AFTER the commit click, so any exception here is
+            # pre-commit and safe to restore the approval for a retry.
+            if approved:
+                approvals.restore(approval)
+            raise
+
+        status = result.get("status")
+        if status in ("placed", "placed_unconfirmed"):
+            # Money has moved (or very likely has). Record it (counts toward spend limits)
+            # and do NOT restore the approval — never auto-retry a committed order.
+            final_total = result.get("estimated_total") or expected_total
+            audit.new_record("placed", total=final_total, fulfillment=fulfillment,
+                             slot=slot_text, confirmation=result.get("confirmation"),
+                             unconfirmed=(status == "placed_unconfirmed"),
+                             items=items or [], attempt_id=rec["id"])
+            _learn_items(items)  # remember what was bought (never affects the outcome)
+        elif status == "aborted" and approved:
+            # Pre-commit abort (total mismatch / Place-order disabled) — keep the yes usable.
             approvals.restore(approval)
-        raise
+        return result
 
-    status = result.get("status")
-    if status in ("placed", "placed_unconfirmed"):
-        # Money has moved (or very likely has). Record it (counts toward spend limits)
-        # and do NOT restore the approval — never auto-retry a committed order.
-        final_total = result.get("estimated_total") or expected_total
-        audit.new_record("placed", total=final_total, fulfillment=fulfillment,
-                         slot=slot_text, confirmation=result.get("confirmation"),
-                         unconfirmed=(status == "placed_unconfirmed"),
-                         items=items or [], attempt_id=rec["id"])
-    elif status == "aborted" and approved:
-        # Pre-commit abort (total mismatch / Place-order disabled) — keep the yes usable.
-        approvals.restore(approval)
-    return result
+
+def _learn_items(items: list[dict] | None) -> None:
+    """After a successful order, remember each item so 'add my usual X' recalls it later.
+    Best-effort: a memory write must never alter or fail the checkout outcome."""
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not name:
+            continue
+        try:
+            preferences.remember(
+                name, display_name=name, quantity=item.get("quantity"),
+                product_id=item.get("product_id"), sku_id=item.get("sku_id"),
+            )
+        except Exception:
+            pass
 
 
 @mcp.tool
@@ -269,6 +294,76 @@ def check_upstream_updates() -> dict:
     deliberate pin bump. Run when the user asks about MCP updates."""
     from . import updates
     return updates.check()
+
+
+@mcp.tool
+def remember_item(
+    phrase: str,
+    product_id: str | None = None,
+    sku_id: str | None = None,
+    brand: str | None = None,
+    size: str | None = None,
+    quantity: int | None = None,
+    substitution: str | None = None,
+    display_name: str | None = None,
+    note: str | None = None,
+) -> dict:
+    """Save the user's preferred product for a phrase so it's remembered next time.
+    Call this whenever the user states or confirms a preference — e.g. they say "my
+    water is the H-E-B 1877 12-pack" or they pick a specific result after you searched.
+    `phrase` is how the user refers to it ("water", "my usual coffee"); pass the
+    product_id/sku_id from the search result plus brand/size when you have them. Fields
+    merge, so you can add detail later without losing the saved SKU."""
+    entry = preferences.remember(
+        phrase, product_id=product_id, sku_id=sku_id, brand=brand, size=size,
+        quantity=quantity, substitution=substitution, display_name=display_name, note=note,
+    )
+    return {"remembered": entry}
+
+
+@mcp.tool
+def recall_item(phrase: str) -> dict:
+    """Look up the user's saved product for a phrase BEFORE searching, so ambiguous
+    requests ("add my usual water", "the 12-pack of water") resolve to the exact product
+    without re-asking. Returns the remembered product (display_name, product_id, sku_id,
+    brand, size, quantity, substitution) or {"found": false}. If found, add that
+    product_id directly; if not, search and then offer to remember_item the user's pick."""
+    entry = preferences.resolve(phrase)
+    return {"found": True, "item": entry} if entry else {"found": False}
+
+
+@mcp.tool
+def forget_item(phrase: str) -> dict:
+    """Forget a previously remembered product for a phrase (the user changed their mind
+    about their 'usual')."""
+    return {"forgotten": preferences.forget(phrase)}
+
+
+@mcp.tool
+def get_preferences() -> dict:
+    """The user's durable preferences and product memory: general settings (default
+    substitution, brand notes, avoid list, notes), every remembered phrase→product
+    mapping, and the standing staples list. Read this when building an order so picks
+    match what the user has chosen before."""
+    return {
+        "general": preferences.general(),
+        "items": preferences.all_items(),
+        "staples": preferences.staples(),
+    }
+
+
+@mcp.tool
+def add_staple(query: str, quantity: int = 1, substitution: str = "ask") -> dict:
+    """Add (or update) an item in the standing weekly order. Use when the user says
+    something like 'always order oat milk' or after they confirm a repeatedly-added item
+    should become a staple."""
+    return {"staples": preferences.add_staple(query, quantity, substitution)}
+
+
+@mcp.tool
+def remove_staple(query: str) -> dict:
+    """Remove an item from the standing weekly order."""
+    return {"staples": preferences.remove_staple(query)}
 
 
 @mcp.custom_route("/health", methods=["GET"])

@@ -24,8 +24,12 @@ your actual store id into its instructions at runtime.)
    (`product_search`/`cart_add`/`place_order`, curbside or scheduled delivery). For URGENT
    requests ("in the next hour", "right now", "ran out") use the **Favor** on-demand tools
    (`favor_search`/`favor_preview_order`/`favor_place_order`, ≤25 items). If unsure, ask.
-3. **Build the cart**: `search_products` → `cart_add` (confirm ambiguous matches with
-   the user: brand, size, quantity). Clip applicable coupons before checkout.
+3. **Build the cart**: for each item the user names loosely ("water", "my usual
+   coffee"), call `recall_item` FIRST — if it returns a saved product, add that
+   product_id directly instead of re-asking. Otherwise `search_products` → `cart_add`
+   (confirm ambiguous matches: brand, size, quantity), then `remember_item` once the user
+   picks one so it resolves automatically next time. `get_preferences` at the start loads
+   brand/size/substitution + staples. Clip applicable coupons before checkout.
 3. **Preview**: `preview_order` for the chosen fulfillment (pickup/delivery). Report
    the itemized total and the payment method's last-4 to the user.
 4. **Slots**: `get_slots` and suggest 1–2 times that fit what you know of the user's
@@ -51,7 +55,7 @@ your actual store id into its instructions at runtime.)
   Never echo a full card number back; refer to cards by last-4.
 - If a tool errors about a missing HEB session, run the shop server's authenticate /
   session-refresh tool rather than asking the user to "log in on the website".
-- Substitutions: apply `data/preferences.json`; when unsure, default to "no
-  substitution" rather than guessing.
+- Substitutions: apply the user's saved preferences (`get_preferences`, backed by
+  `data/preferences.json`); when unsure, default to "no substitution" rather than guessing.
 - Be transparent: after any order action, state plainly what happened, what was (or
   would be) charged, and on which card (last-4).

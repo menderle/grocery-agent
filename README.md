@@ -19,6 +19,7 @@ prompting.
 
 **Talk to it however's easiest:**
 - **Chat / voice with Claude** (desktop or phone) — *"add oat milk and eggs"*, *"order the usual"*.
+- **A self-hosted web app** — `make web` opens a local chat UI (pick Sonnet/Opus/Haiku per chat) that shares the *same* cart, spend limits, history, and remembered picks as the Claude path. See [docs/WEB-UI.md](docs/WEB-UI.md).
 - **Siri / Apple Reminders** — *"Hey Siri, add limes to my Groceries list"*; the agent reads it.
 - **Apple Notes, a shared Google Doc, Todoist, Notion, email, or a text file** — jot items anywhere; it merges them all.
 - **A weekly standing order** — re-orders your staples on a schedule, adjusting for what you added during the week.
@@ -110,6 +111,7 @@ limits before every order.
 | Checkout, policy, approvals, audit, wallet | `src/heb_checkout/` |
 | On-demand (Favor) | `src/favor_checkout/` |
 | One MCP endpoint for everything | `grocery-gateway` (`src/heb_checkout/gateway.py`) |
+| Local web UI (`make web`) | `src/grocery_web/` (Claude agent loop over the gateway) |
 | Autonomy mode + spend limits | `config/policy.yaml` |
 | List intake sources | `config/lists.yaml`, `src/heb_checkout/lists.py` |
 | Setup / migration / always-on | `scripts/`, `deploy/`, `Makefile`, `Dockerfile` |
@@ -138,6 +140,7 @@ limits before every order.
 - **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — every pitfall hit + the fix.
 - **[docs/SESSION-AND-HASHES.md](docs/SESSION-AND-HASHES.md)** — the two H‑E‑B gotchas (session, API hashes).
 - **[docs/INTEGRATION.md](docs/INTEGRATION.md)** — wiring into any LLM / phone / personal-assistant agent.
+- **[docs/WEB-UI.md](docs/WEB-UI.md)** — the self-hosted local web app (`make web`): model picker, memory, private remote access.
 - **[prompts/system-prompt.md](prompts/system-prompt.md)** — the agent's operating instructions.
 
 ## Safety model (in brief)

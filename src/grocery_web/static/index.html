@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grocery Agent</title>
+<style>
+  :root{
+    --bg:#0f1411; --panel:#161d18; --edge:#2a3530; --ink:#e8efe9; --muted:#8aa093;
+    --accent:#3fa66a; --accent-ink:#06120b; --user:#1f2a24; --chip:#1b2620;
+    --warn:#caa23a; --bad:#d2603f; --good:#3fa66a; --blue:#4f8fd0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--ink);height:100vh;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--edge);
+    background:var(--panel);flex-wrap:wrap}
+  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+  header h1 .leaf{color:var(--accent)}
+  .badges{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
+  .badge{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--edge);
+    color:var(--muted);white-space:nowrap}
+  .badge.dry{color:var(--accent-ink);background:var(--warn);border-color:var(--warn);font-weight:600}
+  .badge.live{color:#fff;background:var(--bad);border-color:var(--bad);font-weight:600}
+  select,button{font:inherit}
+  select{background:var(--chip);color:var(--ink);border:1px solid var(--edge);border-radius:8px;padding:5px 8px}
+  .ghost{background:transparent;color:var(--muted);border:1px solid var(--edge);border-radius:8px;
+    padding:5px 10px;cursor:pointer}
+  .ghost:hover{color:var(--ink)}
+  #log{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:12px}
+  .row{display:flex}
+  .row.me{justify-content:flex-end}
+  .bubble{max-width:760px;padding:10px 14px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}
+  .me .bubble{background:var(--user);border:1px solid var(--edge)}
+  .ai .bubble{background:var(--panel);border:1px solid var(--edge)}
+  .chip{align-self:flex-start;font-size:12px;color:var(--muted);background:var(--chip);
+    border:1px solid var(--edge);border-radius:999px;padding:3px 10px}
+  .chip code{color:var(--ink)}
+  .card{align-self:flex-start;max-width:760px;border:1px solid var(--edge);border-radius:14px;
+    background:var(--panel);padding:14px;display:flex;flex-direction:column;gap:10px}
+  .card.approve{border-color:var(--warn)}
+  .card .t{font-weight:600}
+  .card .sub{color:var(--muted);font-size:13px}
+  .approve button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:9px;
+    padding:9px 16px;font-weight:700;cursor:pointer}
+  .approve button:disabled{opacity:.5;cursor:default}
+  .banner{align-self:flex-start;max-width:760px;border-radius:12px;padding:11px 14px;font-size:14px;border:1px solid}
+  .banner.good{border-color:var(--good);background:rgba(63,166,106,.12)}
+  .banner.blue{border-color:var(--blue);background:rgba(79,143,208,.12)}
+  .banner.warn{border-color:var(--warn);background:rgba(202,162,58,.12)}
+  .banner.bad{border-color:var(--bad);background:rgba(210,96,63,.14)}
+  footer{padding:12px 16px;border-top:1px solid var(--edge);background:var(--panel)}
+  .composer{display:flex;gap:10px;max-width:980px;margin:0 auto}
+  textarea{flex:1;resize:none;background:var(--chip);color:var(--ink);border:1px solid var(--edge);
+    border-radius:12px;padding:11px 13px;min-height:46px;max-height:160px}
+  .send{background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:0 20px;
+    font-weight:700;cursor:pointer}
+  .send:disabled{opacity:.5;cursor:default}
+  .hint{color:var(--muted);font-size:12px;text-align:center;margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="leaf">●</span> Grocery Agent</h1>
+  <div class="badges">
+    <span class="badge" id="b-dry">…</span>
+    <span class="badge" id="b-mode">policy …</span>
+    <span class="badge" id="b-spend">7-day …</span>
+    <select id="model" title="Model for this conversation"></select>
+    <button class="ghost" id="newchat">New chat</button>
+  </div>
+</header>
+
+<div id="log"></div>
+
+<footer>
+  <div class="composer">
+    <textarea id="input" placeholder="e.g. order hot dogs for 8 people, pickup Saturday — or: add my usual water"></textarea>
+    <button class="send" id="send">Send</button>
+  </div>
+  <div class="hint" id="hint">Shares spend limits, history, cart &amp; memory with your Claude connector. Approvals require a click.</div>
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const log = $("#log");
+
+// token (only needed if WEB_AUTH_TOKEN is set + reached over Tailscale)
+const urlTok = new URLSearchParams(location.search).get("token");
+if (urlTok) localStorage.setItem("gw_token", urlTok);
+const TOKEN = localStorage.getItem("gw_token") || "";
+function authHeaders(extra={}) { return TOKEN ? {...extra, "Authorization":"Bearer "+TOKEN} : extra; }
+
+// stable conversation id per browser (so reloads continue the same thread + memory)
+let CID = localStorage.getItem("gw_cid");
+if (!CID) { CID = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replace(/[^a-z0-9-]/gi,"").slice(0,16); localStorage.setItem("gw_cid", CID); }
+let MODEL = null;
+
+function el(cls, html){ const d=document.createElement("div"); d.className=cls; if(html!==undefined) d.innerHTML=html; return d; }
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function scroll(){ log.scrollTop = log.scrollHeight; }
+function addUser(t){ const r=el("row me"); r.appendChild(el("bubble", esc(t))); log.appendChild(r); scroll(); }
+function newAIBubble(){ const r=el("row ai"); const b=el("bubble",""); r.appendChild(b); log.appendChild(r); scroll(); return b; }
+function addChip(name){ const c=el("chip", "⚙︎ <code>"+esc(name)+"</code>"); log.appendChild(c); scroll(); }
+function addBanner(kind, html){ const b=el("banner "+kind, html); log.appendChild(b); scroll(); }
+
+let busy=false;
+function setBusy(b){ busy=b; $("#send").disabled=b; $("#input").disabled=b; }
+
+async function refreshStatus(){
+  try{
+    const s = await (await fetch("/api/status", {headers:authHeaders()})).json();
+    const dry=$("#b-dry");
+    if(s.dry_run){ dry.textContent="DRY-RUN (safe)"; dry.className="badge dry"; }
+    else { dry.textContent="LIVE — real charges"; dry.className="badge live"; }
+    $("#b-mode").textContent = "policy: "+(s.policy_mode||"?");
+    $("#b-spend").textContent = "7-day $"+(s.spent_last_7_days??0);
+  }catch(e){}
+}
+
+async function initConfig(){
+  const c = await (await fetch("/api/config", {headers:authHeaders()})).json();
+  const sel=$("#model"); sel.innerHTML="";
+  c.models.forEach(m=>{ const o=document.createElement("option"); o.value=m.alias; o.textContent=m.label; sel.appendChild(o); });
+  MODEL = c.default_model; sel.value = MODEL;
+  sel.onchange = ()=>{ MODEL = sel.value; };
+}
+
+// minimal SSE-over-fetch reader
+async function streamSSE(url, body, on){
+  const res = await fetch(url, {method:"POST", headers:authHeaders({"Content-Type":"application/json"}), body:JSON.stringify(body)});
+  if(!res.ok){ on("error", {message:"HTTP "+res.status}); return; }
+  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf="";
+  while(true){
+    const {value, done} = await reader.read(); if(done) break;
+    buf += dec.decode(value, {stream:true});
+    let i;
+    while((i = buf.indexOf("\n\n")) >= 0){
+      const frame = buf.slice(0, i); buf = buf.slice(i+2);
+      let ev="message", data="";
+      frame.split("\n").forEach(line=>{
+        if(line.startsWith("event:")) ev=line.slice(6).trim();
+        else if(line.startsWith("data:")) data += line.slice(5).trim();
+      });
+      if(data){ try{ on(ev, JSON.parse(data)); }catch(e){ on(ev, {raw:data}); } }
+    }
+  }
+}
+
+function makeHandlers(){
+  let bubble=null;
+  return (ev, d)=>{
+    if(ev==="assistant_delta"){ if(!bubble) bubble=newAIBubble(); bubble.textContent += d.text; scroll(); }
+    else if(ev==="assistant_done"){ bubble=null; }
+    else if(ev==="tool_call"){ addChip(d.name); }
+    else if(ev==="needs_approval"){ renderApprove(d); }
+    else if(ev==="order_outcome"){ renderOutcome(d); }
+    else if(ev==="error"){ addBanner("bad", "⚠ "+esc(d.message||"error")); setBusy(false); }
+    else if(ev==="turn_end"){ setBusy(false); refreshStatus(); }
+  };
+}
+
+function renderApprove(d){
+  const card = el("card approve");
+  card.appendChild(el("t","Approval needed before this order is placed"));
+  if(d.reason) card.appendChild(el("sub", esc(d.reason)));
+  if(d.expires_at) card.appendChild(el("sub","Expires "+esc(d.expires_at)));
+  const btn=document.createElement("button"); btn.textContent="Approve & place order";
+  btn.onclick = ()=>{ btn.disabled=true; btn.textContent="Placing…"; approve(d.approval_id); };
+  card.appendChild(btn); log.appendChild(card); scroll();
+}
+
+function renderOutcome(d){
+  if(d.status==="placed"){ addBanner("good","✓ Order placed."+(d.total?" Total $"+esc(d.total)+".":"")+(d.confirmation?" Confirmation: "+esc(d.confirmation):"")); }
+  else if(d.status==="placed_unconfirmed"){ addBanner("warn","✓ Order submitted (confirmation not captured) — verify it in HEB order history."+(d.total?" ~$"+esc(d.total):"")); }
+  else if(d.status==="dry_run"){ addBanner("blue","🧪 "+esc(d.note||"Rehearsed, not charged.")+(d.total?" Would be $"+esc(d.total)+".":"")); }
+  else if(d.status==="blocked"){ addBanner("bad","⛔ Blocked by your policy: "+esc(d.reason||"")); }
+  else if(d.status==="aborted"){ addBanner("bad","✕ Aborted: "+esc(d.reason||"total mismatch")); }
+  else if(d.status==="error"){ addBanner("bad","⚠ "+esc(d.reason||"error")); }
+}
+
+async function send(){
+  const t = $("#input").value.trim(); if(!t || busy) return;
+  $("#input").value=""; addUser(t); setBusy(true);
+  await streamSSE("/api/chat", {message:t, conversation_id:CID, model:MODEL}, makeHandlers());
+  setBusy(false);
+}
+async function approve(approval_id){
+  setBusy(true);
+  await streamSSE("/api/approve", {approval_id, conversation_id:CID, model:MODEL}, makeHandlers());
+  setBusy(false);
+}
+
+$("#send").onclick = send;
+$("#input").addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); } });
+$("#newchat").onclick = ()=>{ CID=(crypto.randomUUID?crypto.randomUUID():String(Date.now())).replace(/[^a-z0-9-]/gi,"").slice(0,16); localStorage.setItem("gw_cid",CID); log.innerHTML=""; addBanner("blue","New conversation started. Saved preferences still apply."); };
+
+initConfig().then(refreshStatus);
+setInterval(refreshStatus, 30000);
+</script>
+</body>
+</html>

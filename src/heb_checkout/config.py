@@ -41,6 +41,23 @@ def approvals_path() -> Path:
     return agent_home() / "data" / "approvals.json"
 
 
+def preferences_path() -> Path:
+    """Durable brand/size/substitution preferences + the phrase→product memory map
+    ("my usual water" → a specific SKU). Shared by every interface."""
+    return agent_home() / "data" / "preferences.json"
+
+
+def staples_path() -> Path:
+    """The standing weekly order (items the agent re-buys)."""
+    return agent_home() / "data" / "staples.json"
+
+
+def checkout_lock_path() -> Path:
+    """Cross-process mutex file for the place-order critical section, so the web UI
+    and the Claude connector (two gateway instances) can't double-place."""
+    return agent_home() / "data" / ".checkout.lock"
+
+
 def auth_state_path() -> Path:
     # Shared with texas-grocery-mcp (its AUTH_STATE_PATH setting).
     return Path(os.environ.get("AUTH_STATE_PATH", "~/.texas-grocery-mcp/auth.json")).expanduser()

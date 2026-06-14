@@ -134,6 +134,32 @@ milk = next(iter(due.values()))
 assert milk["cycle_days"] == 7 and milk["times_bought"] == 4, milk
 assert "birthday candles" in sug["building_history"], sug["building_history"]
 
+# --- preferences / product memory round-trip (incl. atomic save) ---
+from heb_checkout import preferences  # noqa: E402
+
+preferences.remember("my usual water", display_name="H-E-B 1877 Mineral Water 12 pk",
+                     product_id="123", sku_id="456")
+hit = preferences.resolve("buy a 12-pack of water")          # filler/quantity-word match
+assert hit and hit["product_id"] == "123", hit
+assert preferences.resolve("water")["sku_id"] == "456"
+preferences.remember("water", brand="H-E-B")                 # merge: keeps the saved sku
+assert preferences.resolve("water")["sku_id"] == "456" and preferences.resolve("water")["brand"] == "H-E-B"
+assert preferences.forget("water") is True
+assert preferences.resolve("water") is None
+preferences.add_staple("oat milk", quantity=2)
+assert any(s["query"] == "oat milk" for s in preferences.staples())
+preferences.remove_staple("oat milk")
+assert not any(s["query"] == "oat milk" for s in preferences.staples())
+
+# --- checkout lock: consume() takes it; round-trips and doesn't self-deadlock ---
+from heb_checkout.locking import checkout_lock  # noqa: E402
+
+b = approvals.create(60.0, "pickup", None, expiry_hours=4)
+with checkout_lock():                                          # held → must use consume_locked
+    assert approvals.consume_locked(b["id"])["order_total"] == 60.0
+with checkout_lock():
+    pass                                                       # re-acquire after release: no deadlock
+
 # --- new sources gate correctly when unconfigured ---
 result = lists.read_all()
 assert "todoist" not in result["sources"] and "notion" not in result["sources"]

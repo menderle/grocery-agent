@@ -2,6 +2,8 @@
 .venv/
 profiles/
 data/orders/
+data/web-conversations/
+data/.checkout.lock
 __pycache__/
 *.pyc
 .DS_Store

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- OPTIONAL: always-on local web UI. NOT auto-loaded by `make install-launchd` (the web
+     UI is opt-in / foreground via `make web`). To run it always-on:
+        cp/sed this into ~/Library/LaunchAgents (replace __HOME__) and `launchctl load` it.
+     Needs ANTHROPIC_API_KEY in .env. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.grocery-agent.web</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-c</string>
+        <string>cd __HOME__ &amp;&amp; set -a &amp;&amp; source .env &amp;&amp; exec .venv/bin/grocery-web</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__HOME__</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/grocery-web.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/grocery-web.log</string>
+</dict>
+</plist>

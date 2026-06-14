@@ -50,6 +50,9 @@ async def favor_prepare_order(items: list, address: str | None = None,
     the Favor app/site to place it (one tap + the SMS code). For fully-automated ordering,
     use the HEB tools (scheduled curbside/delivery) instead.
     `items`: list of names (["bananas","oat milk"]) or [{"name":..., "quantity":N}]."""
+    # NOTE: this never commits money (SMS gate → the user places it in the app), so it
+    # takes no checkout_lock. If a future autonomous Favor-place path is ever added, it
+    # MUST wrap its commit section in heb_checkout.locking.checkout_lock() like place_order.
     rec = audit.new_record("favor_prepare", fulfillment=fulfillment, channel="favor")
     result = await favor.preview(items, _address(address), rec["id"], fulfillment)
     if result.get("status") in (None, "ok") or "estimated_total" in result:

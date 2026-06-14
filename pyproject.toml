@@ -10,15 +10,22 @@ dependencies = [
     # Pinned exactly: third-party code that runs with the HEB session. Upgrade
     # deliberately — review the release diff, bump the pin, re-run make selftest.
     "texas-grocery-mcp[browser]==0.1.3",
+    # Local web UI brain (the Claude tool-use agent loop). Starlette/uvicorn/sse-starlette
+    # already ship with fastmcp, so this is the only new dependency for `make web`.
+    "anthropic==0.109.1",
 ]
 
 [project.scripts]
 heb-checkout = "heb_checkout.server:main"
 grocery-gateway = "heb_checkout.gateway:main"
+grocery-web = "grocery_web.app:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/heb_checkout", "src/favor_checkout"]
+packages = ["src/heb_checkout", "src/favor_checkout", "src/grocery_web"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/grocery_web/static" = "grocery_web/static"

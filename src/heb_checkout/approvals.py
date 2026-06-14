@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from . import config
+from .locking import checkout_lock
 
 
 def _load() -> dict:
@@ -36,8 +37,11 @@ def create(order_total: float, fulfillment: str, slot_text: str | None, expiry_h
     return approval
 
 
-def consume(approval_id: str) -> dict:
-    """Pop an approval; raises if missing or expired."""
+def consume_locked(approval_id: str) -> dict:
+    """Pop an approval, ASSUMING the checkout lock is already held by the caller.
+    place_order holds the lock around its whole critical section, so it must use this
+    (re-taking checkout_lock from the same process would self-deadlock — see locking.py).
+    Raises if missing or expired."""
     data = _load()
     approval = data.pop(approval_id, None)
     _save(data)
@@ -46,6 +50,14 @@ def consume(approval_id: str) -> dict:
     if datetime.fromisoformat(approval["expires_at"]) < datetime.now():
         raise ValueError(f"approval {approval_id} expired at {approval['expires_at']}; ask for a fresh cart summary")
     return approval
+
+
+def consume(approval_id: str) -> dict:
+    """Pop an approval atomically across processes (web UI + Claude connector); raises if
+    missing or expired. Takes the checkout lock so the same approval can't be consumed
+    twice by two simultaneous interfaces."""
+    with checkout_lock():
+        return consume_locked(approval_id)
 
 
 def restore(approval: dict) -> None:
