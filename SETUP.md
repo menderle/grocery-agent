@@ -121,7 +121,7 @@ stable `https://<machine>.<tailnet>.ts.net`). That origin is your `OAUTH_BASE_UR
    **Testing**, add your Gmail as a **Test user**.
 2. **Credentials → Create OAuth client ID → Web application**.
 3. **Authorized redirect URI** = `<OAUTH_BASE_URL>/auth/callback`
-   (e.g. `https://maurices-macbook-air.taile913b1.ts.net/auth/callback`). Nothing else.
+   (e.g. `https://<your-machine>.<your-tailnet>.ts.net/auth/callback`). Nothing else.
 4. Copy the **Client ID** and **Client secret**.
 
 **c. Configure** `.env`: set `OAUTH_BASE_URL`, `GOOGLE_OAUTH_CLIENT_ID`,
@@ -148,19 +148,19 @@ It's a **separate Favor account** and runs only when you opt in.
 
 1. **Create a Favor account** — phone-number + SMS signup at favordelivery.com (or the app).
    Add your delivery address and a payment card on the Favor account.
-2. **Park a logged-in Favor browser:** `zsh scripts/start_parked_favor_chrome.sh` → log in
-   in that window (separate profile/port 9223 from HEB), leave it open.
-3. `.venv/bin/python scripts/sync_parked_favor_session.py` → saves the Favor session.
-4. In `.env`: set `FAVOR_DEFAULT_ADDRESS=...` (Favor is address-keyed, not store-keyed).
-5. `make favor-enable` — installs the parked-Favor-Chrome + favor-session-sync launchd jobs.
-6. From chat/phone: *"get me limes and tortillas from Favor"* → `favor_search` finds them,
-   `favor_prepare_order` builds your Favor cart and reaches checkout, then hands off.
+2. **One-time login:** `.venv/bin/python scripts/favor_persistent_login.py` — a browser
+   opens; log in (phone → SMS code), set your delivery address, leave it, press Enter. This
+   saves a Playwright-owned profile (`profiles/favor-pw`) the agent drives natively.
+3. In `.env`: set `FAVOR_DEFAULT_ADDRESS=...` (Favor is address-keyed, not store-keyed).
+4. **Try it (no charge):** *"find limes on Favor"* (`favor_search`) and *"prepare a Favor
+   order for limes and tortillas"* (`favor_prepare_order`) — it builds the cart and hands off.
 
-**Important — Favor is semi-automated:** Favor requires **SMS phone verification at
-checkout**, so the agent CANNOT place a Favor order for you. It does the tedious part
-(finding + adding items to your Favor cart); you open the Favor app and tap Place Order
-(entering the texted code). For fully-hands-off ordering, use HEB scheduled curbside/
-delivery. (HEB places directly because your saved session isn't re-challenged; Favor is.)
+**Important — Favor is semi-automated and cannot auto-place.** Favor requires **SMS phone
+verification on *every* checkout** (a fraud gate — confirmed: even a logged-in, verified
+profile is re-challenged). So the agent does the tedious part (finding + adding items to your
+Favor cart); **you** open the Favor app and tap Place Order, entering the texted code. For
+fully-hands-off ordering, use HEB scheduled curbside/delivery (HEB doesn't re-challenge the
+session). There are no parked-Chrome/launchd jobs for Favor — just the one-time login above.
 
 Until set up, the `favor_*` tools just report "not configured" — harmless. Check anytime:
 ask the agent "favor status".

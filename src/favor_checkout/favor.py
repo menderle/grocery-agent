@@ -101,7 +101,7 @@ async def favor_page(headless: bool = True):
         if not auth.exists():
             raise RuntimeError(
                 "No Favor session: run scripts/favor_persistent_login.py and log in "
-                f"(or scripts/sync_parked_favor_session.py). ({prof or auth} missing)"
+                f"({prof or auth} missing)"
             )
         browser = await p.chromium.launch(headless=headless, args=LAUNCH_ARGS)
         ctx = await browser.new_context(user_agent=USER_AGENT, storage_state=str(auth))
@@ -168,7 +168,7 @@ async def _goto_storefront(page: Page, address: str) -> bool:
 _ADDRESS_ABORT = {
     "status": "aborted",
     "reason": "Favor storefront/address not ready — check FAVOR_DEFAULT_ADDRESS and that "
-              "the parked Favor session is logged in (scripts/sync_parked_favor_session.py).",
+              "you've logged in via scripts/favor_persistent_login.py.",
 }
 
 
@@ -195,11 +195,6 @@ async def _run_search(page: Page, term: str) -> list:
         pass
     await human_pause(1.0, 2.0)
     return await page.locator(SELECTORS["product_card"]).all()
-
-
-async def _bag_text(page: Page) -> str | None:
-    btn = page.locator(SELECTORS["cart_button"]).first
-    return " ".join((await btn.inner_text()).split()) if await btn.count() else None
 
 
 async def search(term: str, address: str, limit: int = 8, headless: bool = True) -> dict:

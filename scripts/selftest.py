@@ -139,5 +139,30 @@ result = lists.read_all()
 assert "todoist" not in result["sources"] and "notion" not in result["sources"]
 assert lists.clear("todoist", ["x"])["cleared"] is False  # no token -> graceful
 
+# --- OAuth OwnerOnly middleware: the email allowlist actually gates ---
+import asyncio  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+from heb_checkout import auth  # noqa: E402
+
+mw = auth.OwnerOnly({"owner@example.com"})
+
+
+async def _gate(claims):
+    async def nxt(ctx):
+        return "ALLOWED"
+    tok = type("T", (), {"claims": claims})() if claims is not None else None
+    with patch.object(auth, "get_access_token", lambda: tok):
+        try:
+            return await mw.on_request(None, nxt)
+        except PermissionError:
+            return "BLOCKED"
+
+assert asyncio.run(_gate({"email": "owner@example.com", "email_verified": True})) == "ALLOWED"
+assert asyncio.run(_gate({"email": "OWNER@EXAMPLE.COM", "email_verified": True})) == "ALLOWED"  # case-insensitive
+assert asyncio.run(_gate({"email": "attacker@example.com", "email_verified": True})) == "BLOCKED"
+assert asyncio.run(_gate({"email": "owner@example.com", "email_verified": False})) == "BLOCKED"
+assert asyncio.run(_gate({})) == "BLOCKED"
+assert asyncio.run(_gate(None)) == "ALLOWED"  # public discovery/health hop
+
 shutil.rmtree(tmp)
 print("selftest: all checks passed")

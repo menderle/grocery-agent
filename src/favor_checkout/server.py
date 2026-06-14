@@ -61,14 +61,23 @@ async def favor_prepare_order(items: list, address: str | None = None,
     return result
 
 
+def _favor_ready() -> bool:
+    """A Favor session exists if either the persistent Playwright profile or the saved
+    cookie state is present."""
+    return favor._pw_profile() is not None or config.favor_auth_state_path().exists()
+
+
 @mcp.tool
 def favor_status() -> dict:
-    """Is Favor configured and ready? (session present, address set, dry-run state)."""
+    """Is Favor configured and ready? (session present, address set, dry-run state).
+    Favor is semi-automated: the agent builds the cart; the user places it in the Favor
+    app (SMS verification at checkout cannot be automated)."""
     return {
-        "favor_session_present": config.favor_auth_state_path().exists(),
+        "favor_session_present": _favor_ready(),
         "default_address": config.favor_default_address() or "(not set — FAVOR_DEFAULT_ADDRESS)",
         "dry_run_mode": config.favor_dry_run_default(),
         "item_cap": favor.ITEM_CAP,
-        "setup": "run scripts/start_parked_favor_chrome.sh + sync_parked_favor_session.py; "
-                 "set FAVOR_DEFAULT_ADDRESS in .env" if not config.favor_auth_state_path().exists() else "ready",
+        "placement": "semi-automated — agent builds cart, you place in the Favor app (SMS)",
+        "setup": "run .venv/bin/python scripts/favor_persistent_login.py (log in + SMS), "
+                 "set FAVOR_DEFAULT_ADDRESS in .env" if not _favor_ready() else "ready",
     }

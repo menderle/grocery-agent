@@ -25,7 +25,7 @@ Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 | `config/policy.yaml` | Autonomy mode, spend limits, quiet hours, fulfillment default |
 | `config/lists.yaml` + `src/heb_checkout/lists.py` | List intake: Apple Notes, Apple Reminders (Siri), link-shared Google Doc/Sheet, iMessage (opt-in), Todoist, Notion, inbox file + authenticated `POST /list` drop endpoint |
 | `calendar_events.py`, `replenishment.py` | Smart suggestions: ICS-feed calendar awareness (party → propose supplies) and purchase-cycle replenishment ("milk due in 2 days") |
-| `src/favor_checkout/` | **On-demand delivery via Favor** (H-E-B-owned, ~20-45min/~2h, ≤25 items) — `favor_*` tools, separate parked session, reuses the shared policy/approval/audit engine. Opt-in (`make favor-enable`). |
+| `src/favor_checkout/` | **On-demand delivery via Favor** (H-E-B-owned, ~20-45min/~2h, ≤25 items) — `favor_*` tools, separate parked session, reuses the shared policy/approval/audit engine. Opt-in: one-time `scripts/favor_persistent_login.py`. |
 | `data/` | Staples, preferences, append-only order audit log |
 | `deploy/`, `Dockerfile`, `Makefile` | launchd services, heartbeat, Docker stack, host migration |
 
@@ -43,6 +43,20 @@ and proves the safety layer with a selftest. Works with **any MCP-capable LLM cl
 not just Claude — and `grocery-gateway` exposes the whole agent as one server that a
 larger personal-assistant agent can mount as its "grocery" capability. See
 [docs/INTEGRATION.md](docs/INTEGRATION.md) and [prompts/system-prompt.md](prompts/system-prompt.md).
+
+## Known limitations (read before relying on it)
+
+- **Favor can't auto-place orders.** Favor (on-demand) requires SMS phone verification on
+  *every* checkout — confirmed: even a logged-in, once-verified profile is re-challenged.
+  So Favor is **semi-automated**: the agent finds + adds items to your Favor cart, then you
+  open the Favor app and tap Place (entering the texted code). HEB scheduled curbside/
+  delivery is the fully hands-off path.
+- **Always-on needs the host awake.** The agent, its browser session, and the OAuth gateway
+  run on *your* Mac (via launchd + Tailscale) — not in the cloud. If the machine sleeps or is
+  off, the phone/remote path is down. A dedicated always-on box (Mac mini) is the fix.
+- **HEB automation is unofficial.** Checkout drives heb.com via a real browser session; it
+  can break on site changes and could trip bot detection or run afoul of HEB's ToS. Money
+  safeguards: dry-run default, the approval gate, and the spend limits in `config/policy.yaml`.
 
 ## Setup — manual steps (Maurice)
 

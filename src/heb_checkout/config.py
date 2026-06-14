@@ -57,9 +57,6 @@ def favor_auth_state_path() -> Path:
         "FAVOR_AUTH_STATE_PATH", str(agent_home() / "state" / "favor-auth.json"))).expanduser()
 
 
-def favor_cdp_port() -> int:
-    return int(os.environ.get("FAVOR_CDP_PORT", "9223"))  # 9222 is the HEB parked Chrome
-
 
 def favor_default_address() -> str:
     return os.environ.get("FAVOR_DEFAULT_ADDRESS", "")

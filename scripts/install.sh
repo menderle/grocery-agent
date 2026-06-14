@@ -30,6 +30,12 @@ if [ ! -f .env ]; then
     echo "==> wrote .env with a fresh LIST_DROP_TOKEN (set OAUTH_* for phone access — see SETUP.md)"
 fi
 
+# 3b. per-user home store (gitignored; set yours before first order)
+if [ ! -f config/store.json ]; then
+    cp config/store.json.example config/store.json
+    echo "==> wrote config/store.json — EDIT IT with your store (ask the agent 'search HEB stores near <address>')"
+fi
+
 # 4. MCP registration for this machine's absolute paths (Claude Code/Desktop pick up
 #    .mcp.json from the project root; other clients: see docs/INTEGRATION.md)
 cat > .mcp.json <<EOF

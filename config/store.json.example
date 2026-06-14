@@ -1,0 +1,8 @@
+{
+  "_comment": "Your home H-E-B. Find your store_id by asking the agent 'search HEB stores near <your address>'. Pass store_id on product_search/cart calls; store_change is broken in texas-grocery-mcp 0.1.3 (stale GraphQL hash) but your account default is already this store. Copy this file to config/store.json and edit.",
+  "store_id": "REPLACE_WITH_YOUR_STORE_ID",
+  "name": "Your H-E-B",
+  "address": "Your store address",
+  "supports_curbside": true,
+  "supports_delivery": true
+}
