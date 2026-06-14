@@ -70,48 +70,38 @@ async def human_pause(low: float = 0.8, high: float = 2.4) -> None:
     await asyncio.sleep(random.uniform(low, high))
 
 
-def _cdp_url() -> str | None:
-    """Devtools URL of the parked Favor Chrome, if it's running."""
-    import urllib.request
-    try:
-        urllib.request.urlopen(f"http://127.0.0.1:{config.favor_cdp_port()}/json/version", timeout=2)
-        return f"http://127.0.0.1:{config.favor_cdp_port()}"
-    except Exception:
-        return None
+def _pw_profile():
+    """The dedicated Playwright-owned Favor profile (scripts/favor_persistent_login.py).
+    Logged in + verified once; Playwright drives it natively (no flaky CDP). This is the
+    reliable session for search + cart-build. (It still can't PLACE — Favor re-demands SMS
+    on every automated checkout — so ordering stays semi-automated: agent builds, user
+    places in the app.)"""
+    d = config.agent_home() / "profiles" / "favor-pw"
+    return d if d.exists() and any(d.iterdir()) else None
 
 
 @asynccontextmanager
 async def favor_page(headless: bool = True):
-    """A page on the Favor storefront.
-
-    Favor's CART lives in the browser session (not server-side per-account like HEB), so
-    all cart operations must share ONE continuous logged-in browser or the cart vanishes
-    between calls. So we drive the PARKED Favor Chrome (the logged-in, always-running
-    window) via CDP when it's available — search → add → preview → place then share its
-    cart. Fall back to a headless session (saved cookies) only for read-only search when
-    the parked browser isn't up."""
-    cdp = _cdp_url()
+    """A page on the Favor storefront, using the persistent logged-in profile when present
+    (reliable, no CDP), else a headless saved-cookie session. Favor's cart is session-bound
+    AND its checkout re-verifies by SMS, so the order flow builds the cart in one session
+    and hands off to the user to place."""
+    prof = _pw_profile()
     async with async_playwright() as p:
-        if cdp:
+        if prof:
+            ctx = await p.chromium.launch_persistent_context(
+                str(prof), headless=headless, args=LAUNCH_ARGS, user_agent=USER_AGENT)
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
             try:
-                browser = await p.chromium.connect_over_cdp(cdp)
-                ctx = browser.contexts[0]
-                page = await ctx.new_page()
-                try:
-                    yield page
-                finally:
-                    await page.close()        # leave the parked browser running
-                    await browser.close()     # detaches CDP, doesn't kill Chrome
-                return
-            except Exception:
-                pass  # CDP unsupported on this Chrome — fall back to headless below
-        # Fallback: headless with saved cookies. Within ONE favor_page() session the cart
-        # persists; that's why the order flow builds the cart + checks out in one call.
+                yield page
+            finally:
+                await ctx.close()  # persists to the profile dir
+            return
         auth = config.favor_auth_state_path()
         if not auth.exists():
             raise RuntimeError(
-                f"No Favor session: start scripts/start_parked_favor_chrome.sh (log in), "
-                f"or run scripts/sync_parked_favor_session.py. ({auth} missing)"
+                "No Favor session: run scripts/favor_persistent_login.py and log in "
+                f"(or scripts/sync_parked_favor_session.py). ({prof or auth} missing)"
             )
         browser = await p.chromium.launch(headless=headless, args=LAUNCH_ARGS)
         ctx = await browser.new_context(user_agent=USER_AGENT, storage_state=str(auth))
