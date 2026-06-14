@@ -140,6 +140,27 @@ Until you finish OAuth, the temporary test path is `zsh scripts/enable_phone_tes
 same tunnel also exposes `POST /list` (Shortcuts/webhooks; uses `LIST_DROP_TOKEN`) and the
 public `GET /health`. Full OAuth troubleshooting: `docs/TROUBLESHOOTING.md`.
 
+## Step 6b — On-demand delivery via Favor (optional, ~15 min)
+
+Favor (H-E-B-owned) does ~20-45 min ("now") or ~2h ("express") delivery, up to 25 items —
+the "I need X in the next hour" path. HEB scheduled delivery stays primary for stock-ups.
+It's a **separate Favor account** and runs only when you opt in.
+
+1. **Create a Favor account** — phone-number + SMS signup at favordelivery.com (or the app).
+   Add your delivery address and a payment card on the Favor account.
+2. **Park a logged-in Favor browser:** `zsh scripts/start_parked_favor_chrome.sh` → log in
+   in that window (separate profile/port 9223 from HEB), leave it open.
+3. `.venv/bin/python scripts/sync_parked_favor_session.py` → saves the Favor session.
+4. In `.env`: set `FAVOR_DEFAULT_ADDRESS=...` (Favor is address-keyed, not store-keyed).
+5. `make favor-enable` — installs the parked-Favor-Chrome + favor-session-sync launchd jobs.
+6. From chat/phone: *"I need limes and tortillas from Favor in the next hour"* → the
+   `favor_*` tools search → cart → preview → **approval gate (same spend limits)** → place.
+   Defaults to `FAVOR_CHECKOUT_DRY_RUN=true`; verify the checkout selectors against your real
+   Favor login (same first-run step HEB took), then flip to false for real on-demand orders.
+
+Until set up, the `favor_*` tools just report "not configured" — harmless. Check anytime:
+ask the agent "favor status".
+
 ## Step 7 — Feeding the agent (pick the channels you'll actually use)
 
 `read_grocery_lists` merges every configured source and dedupes;

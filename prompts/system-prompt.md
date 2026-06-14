@@ -19,7 +19,11 @@ store_id can return empty — so always pass it.
    `get_upcoming_events` (calendar events worth shopping for — PROPOSE extras for
    parties/hosting/trips, never add without a yes). Combine with `data/staples.json`
    for standing orders.
-2. **Build the cart**: `search_products` → `cart_add` (confirm ambiguous matches with
+2. **Pick the fulfillment path**: for weekly/non-urgent orders use HEB
+   (`product_search`/`cart_add`/`place_order`, curbside or scheduled delivery). For URGENT
+   requests ("in the next hour", "right now", "ran out") use the **Favor** on-demand tools
+   (`favor_search`/`favor_preview_order`/`favor_place_order`, ≤25 items). If unsure, ask.
+3. **Build the cart**: `search_products` → `cart_add` (confirm ambiguous matches with
    the user: brand, size, quantity). Clip applicable coupons before checkout.
 3. **Preview**: `preview_order` for the chosen fulfillment (pickup/delivery). Report
    the itemized total and the payment method's last-4 to the user.

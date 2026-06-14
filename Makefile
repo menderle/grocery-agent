@@ -46,7 +46,23 @@ install-launchd:    ## register the HTTP server + heartbeat as LaunchAgents (thi
 	@echo "LaunchAgents installed (server, heartbeat, session-sync, parked-chrome)."
 
 uninstall-launchd:
-	for j in server heartbeat session-sync parked-chrome; do \
+	for j in server heartbeat session-sync parked-chrome favor-session-sync parked-favor-chrome; do \
+		launchctl unload ~/Library/LaunchAgents/com.grocery-agent.$$j.plist 2>/dev/null || true; \
+		rm -f ~/Library/LaunchAgents/com.grocery-agent.$$j.plist; \
+	done
+
+favor-enable:       ## opt-in: parked Favor Chrome + favor session-sync launchd jobs
+	@echo "Set up your Favor account first: zsh scripts/start_parked_favor_chrome.sh (log in),"
+	@echo "then .venv/bin/python scripts/sync_parked_favor_session.py, and FAVOR_DEFAULT_ADDRESS in .env."
+	for j in parked-favor-chrome favor-session-sync; do \
+		sed "s|__HOME__|$(HOME_DIR)|g" deploy/launchd/com.grocery-agent.$$j.plist > ~/Library/LaunchAgents/com.grocery-agent.$$j.plist; \
+		launchctl unload ~/Library/LaunchAgents/com.grocery-agent.$$j.plist 2>/dev/null || true; \
+		launchctl load ~/Library/LaunchAgents/com.grocery-agent.$$j.plist; \
+	done
+	@echo "Favor launchd jobs installed."
+
+favor-disable:
+	for j in parked-favor-chrome favor-session-sync; do \
 		launchctl unload ~/Library/LaunchAgents/com.grocery-agent.$$j.plist 2>/dev/null || true; \
 		rm -f ~/Library/LaunchAgents/com.grocery-agent.$$j.plist; \
 	done

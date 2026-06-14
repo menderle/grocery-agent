@@ -48,3 +48,22 @@ def auth_state_path() -> Path:
 
 def dry_run_default() -> bool:
     return os.environ.get("HEB_CHECKOUT_DRY_RUN", "true").lower() not in ("false", "0", "no")
+
+
+# ---------- Favor (on-demand delivery) — separate account/session from HEB ----------
+
+def favor_auth_state_path() -> Path:
+    return Path(os.environ.get(
+        "FAVOR_AUTH_STATE_PATH", str(agent_home() / "state" / "favor-auth.json"))).expanduser()
+
+
+def favor_cdp_port() -> int:
+    return int(os.environ.get("FAVOR_CDP_PORT", "9223"))  # 9222 is the HEB parked Chrome
+
+
+def favor_default_address() -> str:
+    return os.environ.get("FAVOR_DEFAULT_ADDRESS", "")
+
+
+def favor_dry_run_default() -> bool:
+    return os.environ.get("FAVOR_CHECKOUT_DRY_RUN", "true").lower() not in ("false", "0", "no")

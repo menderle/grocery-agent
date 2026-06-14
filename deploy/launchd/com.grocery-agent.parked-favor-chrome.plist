@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.grocery-agent.parked-favor-chrome</string>
+    <!-- Keeps the parked Favor Chrome (port 9223) alive across reboots/crashes, same as
+         the HEB one. Idempotent: relaunches only if the debug port is down. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>__HOME__/scripts/start_parked_favor_chrome.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/grocery-parked-favor-chrome.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/grocery-parked-favor-chrome.log</string>
+</dict>
+</plist>

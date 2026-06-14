@@ -25,6 +25,7 @@ Full design: `~/.claude/plans/i-wnat-to-create-synchronous-otter.md`
 | `config/policy.yaml` | Autonomy mode, spend limits, quiet hours, fulfillment default |
 | `config/lists.yaml` + `src/heb_checkout/lists.py` | List intake: Apple Notes, Apple Reminders (Siri), link-shared Google Doc/Sheet, iMessage (opt-in), Todoist, Notion, inbox file + authenticated `POST /list` drop endpoint |
 | `calendar_events.py`, `replenishment.py` | Smart suggestions: ICS-feed calendar awareness (party → propose supplies) and purchase-cycle replenishment ("milk due in 2 days") |
+| `src/favor_checkout/` | **On-demand delivery via Favor** (H-E-B-owned, ~20-45min/~2h, ≤25 items) — `favor_*` tools, separate parked session, reuses the shared policy/approval/audit engine. Opt-in (`make favor-enable`). |
 | `data/` | Staples, preferences, append-only order audit log |
 | `deploy/`, `Dockerfile`, `Makefile` | launchd services, heartbeat, Docker stack, host migration |
 

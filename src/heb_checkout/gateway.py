@@ -22,6 +22,11 @@ from fastmcp import FastMCP
 from . import config
 from .server import mcp as checkout
 
+try:
+    from favor_checkout.server import mcp as favor_mcp
+except Exception:  # favor module optional; gateway still works without it
+    favor_mcp = None
+
 
 def _shop_command() -> str:
     # Prefer our launcher (applies config/graphql-hashes.json overrides for HEB's
@@ -75,12 +80,21 @@ def build_gateway() -> FastMCP:
             "return needs_approval with an approval_id — show the summary and only retry "
             "with that approval_id after an explicit yes. Always pass `items` (the cart "
             "contents) to place_order. Never work around a 'blocked' response: those are "
-            "the user's own hard limits."
+            "the user's own hard limits.\n\n"
+            "FULFILLMENT ROUTING — two delivery paths:\n"
+            "  - HEB scheduled (the product_search/cart/place_order tools): curbside or "
+            "scheduled home delivery. Default for weekly stock-ups and anything not urgent.\n"
+            "  - FAVOR on-demand (the favor_* tools): ~20-45 min ('now') or ~2h ('express') "
+            "delivery, up to 25 items. Use when the user signals URGENCY — 'in the next "
+            "hour', 'right now', 'tonight', 'ran out of X'. Same approval/spend-limit gates.\n"
+            "Pick based on intent; if ambiguous, ask 'scheduled or on-demand (Favor)?'."
         ),
     )
     from fastmcp.server import create_proxy
 
     gateway.mount(checkout)
+    if favor_mcp is not None:
+        gateway.mount(favor_mcp)  # favor_* on-demand delivery tools
     gateway.mount(
         create_proxy({"mcpServers": {"shop": {"command": _shop_command(), "args": []}}})
     )
