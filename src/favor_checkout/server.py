@@ -27,25 +27,31 @@ async def favor_search(term: str, address: str | None = None) -> dict:
 
 
 @mcp.tool
-async def favor_preview_order(address: str | None = None, fulfillment: str = "now") -> dict:
-    """Walk the current Favor cart to checkout review: fee, total, ETA. Never charges.
-    fulfillment: 'now' (~20-45 min) or 'express' (~2h)."""
+async def favor_preview_order(items: list, address: str | None = None,
+                              fulfillment: str = "now") -> dict:
+    """Build a Favor on-demand cart from `items` and report fee/total/ETA. Never charges.
+    `items`: a list of item names (e.g. ["bananas","oat milk"]) or
+    [{"name": "...", "quantity": N}]. Confirm ambiguous items via favor_search first.
+    Favor's cart is session-bound, so the cart is built fresh in this one call.
+    fulfillment: 'now' (~20-45 min) or 'express' (~2h). Cap: 25 items."""
     rec = audit.new_record("favor_preview", fulfillment=fulfillment)
-    return await favor.preview(_address(address), rec["id"], fulfillment)
+    return await favor.preview(items, _address(address), rec["id"], fulfillment)
 
 
 @mcp.tool
 async def favor_place_order(
+    items: list,
     expected_total: float,
     address: str | None = None,
     fulfillment: str = "now",
     approval_id: str | None = None,
-    items: list[dict] | None = None,
 ) -> dict:
     """Place the current Favor cart for on-demand delivery. Policy-gated identically to
     HEB place_order (shared spend limits + approval modes). Policy gates (spend limits,
     approval mode, quiet hours) apply REGARDLESS of FAVOR_CHECKOUT_DRY_RUN — dry-run only
     stops the final Place-order click, it does not bypass any check.
+    `items`: same shape as favor_preview_order — the cart is rebuilt in this one session
+    (Favor's cart is session-bound), then checked out.
     Outcomes: placed | placed_unconfirmed | dry_run | needs_approval | blocked | aborted."""
     try:
         pol = policy.load()
@@ -82,7 +88,7 @@ async def favor_place_order(
     rec = audit.new_record("favor_dry_run" if dry_run else "favor_attempt",
                            total=expected_total, fulfillment=fulfillment, channel="favor")
     try:
-        result = await favor.place(addr, rec["id"], fulfillment=fulfillment,
+        result = await favor.place(items, addr, rec["id"], fulfillment=fulfillment,
                                    dry_run=dry_run, max_total=round(expected_total * 1.10, 2))
     except Exception:
         if approved:
