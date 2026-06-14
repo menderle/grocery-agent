@@ -89,7 +89,15 @@ async def place_order(
 
     Outcomes: placed | dry_run | needs_approval (returns approval_id to show the
     user) | blocked (policy; not overridable) | aborted (total mismatch)."""
+    # Load policy BEFORE consuming the approval — a missing/broken policy.yaml must not
+    # pop (burn) the user's approval while never placing the order.
+    try:
+        pol = policy.load()
+    except Exception as e:
+        return {"status": "error", "reason": f"could not load policy: {e}"}
+
     approved = False
+    approval = None
     if approval_id:
         approval = approvals.consume(approval_id)  # raises if expired/unknown
         expected_total = approval["order_total"]
@@ -100,10 +108,11 @@ async def place_order(
 
     decision = policy.evaluate(expected_total, approved=approved)
     if decision.action == "blocked":
+        if approved:
+            approvals.restore(approval)  # a policy block isn't a 'no' — keep the yes usable
         audit.new_record("blocked", total=expected_total, reason=decision.reason)
         return {"status": "blocked", "reason": decision.reason}
     if decision.action == "needs_approval":
-        pol = policy.load()
         approval = approvals.create(
             expected_total, fulfillment, slot_text,
             expiry_hours=pol.get("approval", {}).get("expiry_hours", 4),
@@ -127,14 +136,24 @@ async def place_order(
             dry_run=dry_run, max_total=round(expected_total * 1.10, 2),
         )
     except Exception:
+        # place() never raises AFTER the commit click, so any exception here is
+        # pre-commit and safe to restore the approval for a retry.
         if approved:
-            approvals.restore(approval)  # technical failure shouldn't burn the user's yes
+            approvals.restore(approval)
         raise
-    if result.get("status") == "placed":
+
+    status = result.get("status")
+    if status in ("placed", "placed_unconfirmed"):
+        # Money has moved (or very likely has). Record it (counts toward spend limits)
+        # and do NOT restore the approval — never auto-retry a committed order.
         final_total = result.get("estimated_total") or expected_total
         audit.new_record("placed", total=final_total, fulfillment=fulfillment,
                          slot=slot_text, confirmation=result.get("confirmation"),
+                         unconfirmed=(status == "placed_unconfirmed"),
                          items=items or [], attempt_id=rec["id"])
+    elif status == "aborted" and approved:
+        # Pre-commit abort (total mismatch / Place-order disabled) — keep the yes usable.
+        approvals.restore(approval)
     return result
 
 

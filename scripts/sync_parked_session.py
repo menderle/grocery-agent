@@ -8,6 +8,7 @@ Exit 0 = synced a live authenticated session, 1 = parked Chrome missing or logge
 
 import asyncio
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -20,6 +21,16 @@ from heb_checkout import config  # noqa: E402
 
 PORT = 9222
 HASHES_FILE = config.agent_home() / "config" / "graphql-hashes.json"
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write via temp file + os.replace so a concurrent reader (checkout reading
+    auth.json, or another sync) never sees a half-written file. This runs every 180s
+    via launchd while checkouts read auth.json — the race is real."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)  # atomic on the same filesystem (POSIX)
 
 
 def _parked_up() -> bool:
@@ -69,10 +80,10 @@ async def main() -> int:
         print("parked Chrome is logged OUT — log in again in that window")
         return 1
 
-    config.auth_state_path().write_text(json.dumps(state))
+    _atomic_write(config.auth_state_path(), json.dumps(state))
     if captured:
         existing = json.loads(HASHES_FILE.read_text()) if HASHES_FILE.exists() else {}
-        HASHES_FILE.write_text(json.dumps({**existing, **captured}, indent=2, sort_keys=True) + "\n")
+        _atomic_write(HASHES_FILE, json.dumps({**existing, **captured}, indent=2, sort_keys=True) + "\n")
     print(f"synced {len(heb)} cookies from parked Chrome (+{len(captured)} hashes)")
     return 0
 

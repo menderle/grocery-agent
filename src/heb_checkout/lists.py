@@ -50,6 +50,13 @@ def parse_items(text: str) -> list[str]:
 
 # ---------- AppleScript sources (macOS) ----------
 
+def _as_str(s: str) -> str:
+    """Escape a Python string for safe embedding inside an AppleScript double-quoted
+    literal. Without this, a note title / reminder name / list item containing a quote
+    could inject arbitrary AppleScript (it reaches osascript via subprocess)."""
+    return str(s).replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _osascript(script: str) -> str | None:
     if platform.system() != "Darwin":
         return None
@@ -68,7 +75,7 @@ def _osascript(script: str) -> str | None:
 
 def read_apple_notes(note_title: str) -> dict:
     body = _osascript(
-        f'tell application "Notes" to get body of note "{note_title}"'
+        f'tell application "Notes" to get body of note "{_as_str(note_title)}"'
     )
     if body is None:
         return {"available": False,
@@ -79,7 +86,7 @@ def read_apple_notes(note_title: str) -> dict:
 
 def mark_apple_notes_handled(note_title: str, items: list[str]) -> bool:
     """Rewrite the note with handled items prefixed by ✓ and a dated footer."""
-    body = _osascript(f'tell application "Notes" to get body of note "{note_title}"')
+    body = _osascript(f'tell application "Notes" to get body of note "{_as_str(note_title)}"')
     if body is None:
         return False
     text = html_lib.unescape(re.sub(r"<[^>]+>", "\n", body))
@@ -93,16 +100,19 @@ def mark_apple_notes_handled(note_title: str, items: list[str]) -> bool:
         elif s:
             out_lines.append(s)
     out_lines.append(f"({HANDLED_MARK} = ordered {date.today().isoformat()})")
+    # html.escape does NOT escape backslashes, and new_body is placed inside an
+    # AppleScript string literal, so it still needs AppleScript escaping too.
     new_body = "".join(f"<div>{html_lib.escape(line)}</div>" for line in out_lines)
     return _osascript(
-        f'tell application "Notes" to set body of note "{note_title}" to "{new_body}"'
+        f'tell application "Notes" to set body of note "{_as_str(note_title)}" '
+        f'to "{_as_str(new_body)}"'
     ) is not None
 
 
 def read_apple_reminders(list_name: str) -> dict:
     out = _osascript(
         'set AppleScript\'s text item delimiters to linefeed\n'
-        f'tell application "Reminders" to get (name of reminders of list "{list_name}" '
+        f'tell application "Reminders" to get (name of reminders of list "{_as_str(list_name)}" '
         'whose completed is false) as text'
     )
     if out is None:
@@ -112,11 +122,11 @@ def read_apple_reminders(list_name: str) -> dict:
 
 
 def complete_apple_reminders(list_name: str, items: list[str]) -> bool:
-    handled = "{" + ", ".join(f'"{i}"' for i in items) + "}"
+    handled = "{" + ", ".join(f'"{_as_str(i)}"' for i in items) + "}"
     return _osascript(
         f'set handledNames to {handled}\n'
         'tell application "Reminders"\n'
-        f'  repeat with r in (reminders of list "{list_name}" whose completed is false)\n'
+        f'  repeat with r in (reminders of list "{_as_str(list_name)}" whose completed is false)\n'
         '    if handledNames contains (name of r as text) then set completed of r to true\n'
         '  end repeat\n'
         'end tell'

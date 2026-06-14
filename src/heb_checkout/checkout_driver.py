@@ -221,16 +221,41 @@ async def place(fulfillment: str, slot_text: str | None, order_id: str,
                     "reason": f"on-screen total ${total:.2f} exceeds approved ${max_total:.2f}",
                     "screenshots": str(audit.screenshots_dir(order_id))}
 
+        # ---- POINT OF NO RETURN ----
+        # Once this click is dispatched the order is committed server-side. Anything that
+        # raises AFTER this MUST NOT be treated as a safe-to-retry failure (that would risk
+        # a duplicate order). So we never let a bare exception escape post-click: we always
+        # return a structured result, marking the outcome 'placed' (confirmed) or
+        # 'placed_unconfirmed' (committed but we couldn't read confirmation — human must
+        # verify in order history before any re-place).
         await po.click()
-        await page.wait_for_load_state("domcontentloaded")
-        await human_pause(3.0, 5.0)
-        await _shot(page, order_id, "05-confirmation")
-        body = " ".join((await page.locator("body").inner_text()).split())
-        # HEB confirmation number looks like "Order # HEB191349502412550144".
-        conf = re.search(r"Order\s*#\s*([A-Z]{2,}[0-9]{6,})", body) or \
-            re.search(r"\b(HEB[0-9]{8,})\b", body)
-        placed_ok = "order is placed" in body.lower() or "order placed" in body.lower()
-        return {"status": "placed", "estimated_total": total,
-                "confirmation": conf.group(1) if conf else None,
-                "placed_confirmed": placed_ok,
-                "screenshots": str(audit.screenshots_dir(order_id))}
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=30000)
+            await human_pause(3.0, 5.0)
+            try:
+                await _shot(page, order_id, "05-confirmation")
+            except Exception:
+                pass
+            body = " ".join((await page.locator("body").inner_text()).split())
+            conf = re.search(r"Order\s*#\s*([A-Z]{2,}[0-9]{6,})", body) or \
+                re.search(r"\b(HEB[0-9]{8,})\b", body)
+            placed_ok = "order is placed" in body.lower() or "order placed" in body.lower()
+            if conf or placed_ok:
+                return {"status": "placed", "estimated_total": total,
+                        "confirmation": conf.group(1) if conf else None,
+                        "placed_confirmed": placed_ok,
+                        "screenshots": str(audit.screenshots_dir(order_id))}
+            # Click landed but no confirmation text — treat as committed-but-unconfirmed.
+            return {"status": "placed_unconfirmed", "estimated_total": total,
+                    "confirmation": None, "placed_confirmed": False,
+                    "reason": "Place order was clicked but no confirmation was read — "
+                              "VERIFY in HEB order history before re-placing.",
+                    "screenshots": str(audit.screenshots_dir(order_id))}
+        except Exception as e:
+            # Exception after the commit click — do NOT re-raise (would let the caller
+            # restore the approval and risk a duplicate). Report unconfirmed.
+            return {"status": "placed_unconfirmed", "estimated_total": total,
+                    "confirmation": None, "placed_confirmed": False,
+                    "reason": f"Place order clicked, then {type(e).__name__} before "
+                              "confirmation — VERIFY in HEB order history before re-placing.",
+                    "screenshots": str(audit.screenshots_dir(order_id))}

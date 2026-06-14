@@ -20,12 +20,20 @@ else
 fi
 
 # Keep the HEB session warm (refreshes only when close to expiry; ~10s when it does).
-KA=$(.venv/bin/python scripts/keepalive.py 2>&1 | tail -1)
-if [[ $? -ne 0 ]]; then
-    osascript -e "display notification \"HEB session refresh failed — run capture_real_session.py\" with title \"Grocery agent: session\"" 2>/dev/null
-    echo "$(date -Iseconds) SESSION: $KA"
+# Capture python's OWN exit code, not the pipe's — `... | tail` would mask a failure
+# (and zsh has no pipefail by default), causing false "healthy" reports.
+if [[ ! -x .venv/bin/python ]]; then
+    osascript -e "display notification \"grocery-agent venv missing — run scripts/install.sh\" with title \"Grocery agent: setup\"" 2>/dev/null
+    echo "$(date -Iseconds) SESSION: .venv/bin/python not found"
 else
-    echo "$(date -Iseconds) session: $KA"
+    KA_RAW=$(.venv/bin/python scripts/keepalive.py 2>&1); KA_RC=$?
+    KA=$(echo "$KA_RAW" | tail -1)
+    if [[ $KA_RC -ne 0 ]]; then
+        osascript -e "display notification \"HEB session refresh failed — run capture_real_session.py\" with title \"Grocery agent: session\"" 2>/dev/null
+        echo "$(date -Iseconds) SESSION: $KA"
+    else
+        echo "$(date -Iseconds) session: $KA"
+    fi
 fi
 
 # Weekly upstream update check (stamp file throttles to every 7 days).
