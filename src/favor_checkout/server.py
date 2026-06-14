@@ -39,70 +39,25 @@ async def favor_preview_order(items: list, address: str | None = None,
 
 
 @mcp.tool
-async def favor_place_order(
-    items: list,
-    expected_total: float,
-    address: str | None = None,
-    fulfillment: str = "now",
-    approval_id: str | None = None,
-) -> dict:
-    """Place the current Favor cart for on-demand delivery. Policy-gated identically to
-    HEB place_order (shared spend limits + approval modes). Policy gates (spend limits,
-    approval mode, quiet hours) apply REGARDLESS of FAVOR_CHECKOUT_DRY_RUN — dry-run only
-    stops the final Place-order click, it does not bypass any check.
-    `items`: same shape as favor_preview_order — the cart is rebuilt in this one session
-    (Favor's cart is session-bound), then checked out.
-    Outcomes: placed | placed_unconfirmed | dry_run | needs_approval | blocked | aborted."""
-    try:
-        pol = policy.load()
-    except Exception as e:
-        return {"status": "error", "reason": f"could not load policy: {e}"}
+async def favor_prepare_order(items: list, address: str | None = None,
+                              fulfillment: str = "now") -> dict:
+    """Build the Favor on-demand cart from `items` and hand off for the user to place.
 
-    addr = _address(address)
-    approved = False
-    approval = None
-    if approval_id:
-        approval = approvals.consume(approval_id)
-        expected_total = approval["order_total"]
-        fulfillment = approval.get("slot_text") or fulfillment
-        items = items or approval.get("items") or None
-        approved = True
-
-    decision = policy.evaluate(expected_total, approved=approved)
-    if decision.action == "blocked":
-        if approved:
-            approvals.restore(approval)
-        audit.new_record("blocked", total=expected_total, reason=decision.reason, channel="favor")
-        return {"status": "blocked", "reason": decision.reason}
-    if decision.action == "needs_approval":
-        approval = approvals.create(
-            expected_total, "favor:" + fulfillment, fulfillment,
-            expiry_hours=pol.get("approval", {}).get("expiry_hours", 4), items=items,
-        )
-        audit.new_record("pending_approval", total=expected_total, approval_id=approval["id"], channel="favor")
-        return {"status": "needs_approval", "approval_id": approval["id"],
-                "expires_at": approval["expires_at"], "reason": decision.reason,
-                "next_step": "show the user the Favor cart + total + ETA; on a yes, call favor_place_order with this approval_id"}
-
-    dry_run = config.favor_dry_run_default()
-    rec = audit.new_record("favor_dry_run" if dry_run else "favor_attempt",
-                           total=expected_total, fulfillment=fulfillment, channel="favor")
-    try:
-        result = await favor.place(items, addr, rec["id"], fulfillment=fulfillment,
-                                   dry_run=dry_run, max_total=round(expected_total * 1.10, 2))
-    except Exception:
-        if approved:
-            approvals.restore(approval)  # favor.place never raises post-click → pre-commit only
-        raise
-
-    status = result.get("status")
-    if status in ("placed", "placed_unconfirmed"):
-        audit.new_record("placed", total=result.get("estimated_total") or expected_total,
-                         fulfillment="favor:" + fulfillment, channel="favor",
-                         unconfirmed=(status == "placed_unconfirmed"),
-                         items=items or [], attempt_id=rec["id"])
-    elif status == "aborted" and approved:
-        approvals.restore(approval)
+    Favor requires SMS phone verification at checkout (a fraud gate), so the agent CANNOT
+    place a Favor order unattended — only the user, entering the texted code, can. This
+    tool does the tedious part: it adds the items to your Favor cart and reaches the
+    checkout review, then returns the cart summary + estimated total and tells you to open
+    the Favor app/site to place it (one tap + the SMS code). For fully-automated ordering,
+    use the HEB tools (scheduled curbside/delivery) instead.
+    `items`: list of names (["bananas","oat milk"]) or [{"name":..., "quantity":N}]."""
+    rec = audit.new_record("favor_prepare", fulfillment=fulfillment, channel="favor")
+    result = await favor.preview(items, _address(address), rec["id"], fulfillment)
+    if result.get("status") in (None, "ok") or "estimated_total" in result:
+        result["status"] = "cart_ready_place_in_app"
+        result["next_step"] = (
+            "Your Favor cart is built. Open the Favor app or favordelivery.com and tap "
+            "Place Order — Favor will text you a verification code to confirm. (The agent "
+            "can't place Favor orders for you because of that SMS step.)")
     return result
 
 

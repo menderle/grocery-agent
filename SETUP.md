@@ -153,10 +153,14 @@ It's a **separate Favor account** and runs only when you opt in.
 3. `.venv/bin/python scripts/sync_parked_favor_session.py` → saves the Favor session.
 4. In `.env`: set `FAVOR_DEFAULT_ADDRESS=...` (Favor is address-keyed, not store-keyed).
 5. `make favor-enable` — installs the parked-Favor-Chrome + favor-session-sync launchd jobs.
-6. From chat/phone: *"I need limes and tortillas from Favor in the next hour"* → the
-   `favor_*` tools search → cart → preview → **approval gate (same spend limits)** → place.
-   Defaults to `FAVOR_CHECKOUT_DRY_RUN=true`; verify the checkout selectors against your real
-   Favor login (same first-run step HEB took), then flip to false for real on-demand orders.
+6. From chat/phone: *"get me limes and tortillas from Favor"* → `favor_search` finds them,
+   `favor_prepare_order` builds your Favor cart and reaches checkout, then hands off.
+
+**Important — Favor is semi-automated:** Favor requires **SMS phone verification at
+checkout**, so the agent CANNOT place a Favor order for you. It does the tedious part
+(finding + adding items to your Favor cart); you open the Favor app and tap Place Order
+(entering the texted code). For fully-hands-off ordering, use HEB scheduled curbside/
+delivery. (HEB places directly because your saved session isn't re-challenged; Favor is.)
 
 Until set up, the `favor_*` tools just report "not configured" — harmless. Check anytime:
 ask the agent "favor status".

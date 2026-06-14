@@ -84,10 +84,12 @@ def build_gateway() -> FastMCP:
             "FULFILLMENT ROUTING — two delivery paths:\n"
             "  - HEB scheduled (the product_search/cart/place_order tools): curbside or "
             "scheduled home delivery. Default for weekly stock-ups and anything not urgent.\n"
-            "  - FAVOR on-demand (the favor_* tools): ~20-45 min ('now') or ~2h ('express') "
-            "delivery, up to 25 items. Use when the user signals URGENCY — 'in the next "
-            "hour', 'right now', 'tonight', 'ran out of X'. Same approval/spend-limit gates.\n"
-            "Pick based on intent; if ambiguous, ask 'scheduled or on-demand (Favor)?'."
+            "  - FAVOR on-demand (favor_search, favor_prepare_order): ~20-45 min / ~2h, "
+            "up to 25 items, for URGENCY ('in the next hour', 'ran out of X'). NOTE: Favor "
+            "requires SMS verification at checkout, so the agent builds the cart and the "
+            "USER places it in the Favor app (favor_prepare_order returns the hand-off). "
+            "The agent CANNOT place a Favor order itself.\n"
+            "Pick based on intent; if ambiguous, ask 'scheduled (HEB) or on-demand (Favor)?'."
         ),
     )
     from fastmcp.server import create_proxy
