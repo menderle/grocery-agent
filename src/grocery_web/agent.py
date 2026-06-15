@@ -157,13 +157,19 @@ async def run_chat(messages: list, model: str):
                     yield {"event": "assistant_delta", "data": {"text": text}}
                 final = await stream.get_final_message()
 
-            messages.append({"role": "assistant", "content": [_dump_block(b) for b in final.content]})
+            assistant_msg = {"role": "assistant", "content": [_dump_block(b) for b in final.content]}
             yield {"event": "assistant_done", "data": {}}
 
             if final.stop_reason != "tool_use":
+                messages.append(assistant_msg)
                 yield {"event": "turn_end", "data": {}}
                 return
 
+            # Run the tools FIRST, then append the assistant tool_use message and its
+            # tool_results TOGETHER (no await between the two appends). If the turn is
+            # interrupted mid-tool-call (stream abort, tool/connection error), `messages` is
+            # left at the prior valid state with NO dangling tool_use — so the thread the caller
+            # persists is always replayable by the Anthropic API.
             tool_results = []
             for block in final.content:
                 if block.type != "tool_use":
@@ -179,6 +185,7 @@ async def run_chat(messages: list, model: str):
                     "content": json.dumps(payload, default=str),
                     "is_error": is_error,
                 })
+            messages.append(assistant_msg)
             messages.append({"role": "user", "content": tool_results})
         # Safety cap reached (runaway tool loop) — stop spending and tell the user.
         yield {"event": "assistant_delta", "data": {"text": "\n\n_(Stopped after several steps — ask me to continue if needed.)_"}}

@@ -55,11 +55,77 @@ def _prune_convos(max_age_days: int = 30) -> None:
         pass
 
 
+_INTERRUPTED = "[interrupted — no result was recorded]"
+
+
+def _synth_result(tool_use_id: str) -> dict:
+    return {"type": "tool_result", "tool_use_id": tool_use_id, "content": _INTERRUPTED, "is_error": True}
+
+
+def _repair_tool_use_pairs(messages: list) -> list:
+    """Keep a persisted thread replayable by the Anthropic Messages API, which rejects BOTH
+    (a) an assistant `tool_use` block with no answering `tool_result` in the immediately
+    following user message, and (b) a `tool_result` block with no preceding `tool_use`. A turn
+    interrupted between the assistant tool_use and its tool_results (stream abort, tool error,
+    process restart mid-turn) produces (a); a legacy/hand-edited thread can produce (b). We
+    synthesize error tool_results for missing ids and drop orphan tool_results. Idempotent: a
+    well-formed thread passes through unchanged. (Adjacent same-role user messages — e.g. a
+    synthetic tool_result message right before a user-text message — are fine; the API
+    coalesces them.)"""
+    out: list = []
+    i, n = 0, len(messages)
+    while i < n:
+        msg = messages[i]
+        content = msg.get("content") if isinstance(msg, dict) else None
+        ids = ([b["id"] for b in content
+                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id")]
+               if isinstance(msg, dict) and msg.get("role") == "assistant" and isinstance(content, list)
+               else [])
+        if ids:
+            out.append(msg)
+            nxt = messages[i + 1] if i + 1 < n else None
+            nxt_content = nxt.get("content") if isinstance(nxt, dict) else None
+            nxt_is_results = (isinstance(nxt, dict) and nxt.get("role") == "user"
+                              and isinstance(nxt_content, list)
+                              and any(isinstance(b, dict) and b.get("type") == "tool_result"
+                                      for b in nxt_content))
+            if nxt_is_results:
+                # Keep non-tool_result content + tool_results that answer THIS message's ids
+                # (drop orphans), then synthesize for any id still unanswered.
+                kept = [b for b in nxt_content
+                        if not (isinstance(b, dict) and b.get("type") == "tool_result")
+                        or b.get("tool_use_id") in ids]
+                present = {b.get("tool_use_id") for b in kept
+                           if isinstance(b, dict) and b.get("type") == "tool_result"}
+                kept += [_synth_result(t) for t in ids if t not in present]
+                out.append({**nxt, "content": kept})
+                i += 2
+                continue
+            # No answering message follows — insert one covering every id.
+            out.append({"role": "user", "content": [_synth_result(t) for t in ids]})
+            i += 1
+            continue
+        # A user message bearing tool_result blocks that is NOT the answer to a preceding
+        # tool_use (an immediate answer would have been consumed above) → orphans; drop them.
+        if isinstance(msg, dict) and msg.get("role") == "user" and isinstance(content, list) \
+                and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content):
+            kept = [b for b in content if not (isinstance(b, dict) and b.get("type") == "tool_result")]
+            if kept:  # keep any non-tool_result content; if it was all orphans, drop the message
+                out.append({**msg, "content": kept})
+            i += 1
+            continue
+        out.append(msg)
+        i += 1
+    return out
+
+
 def _load_convo(cid: str) -> dict:
     path = config.conversations_dir() / f"{cid}.json"
     if path.exists():
         try:
-            return json.loads(path.read_text())
+            convo = json.loads(path.read_text())
+            convo["messages"] = _repair_tool_use_pairs(convo.get("messages") or [])
+            return convo
         except (json.JSONDecodeError, OSError):
             pass
     return {"messages": []}
@@ -67,7 +133,9 @@ def _load_convo(cid: str) -> dict:
 
 def _save_convo(cid: str, convo: dict) -> None:
     """Atomic write so a crash / disconnect mid-write can't truncate a thread (which
-    _load_convo would then silently discard)."""
+    _load_convo would then silently discard). Repairs tool_use/tool_result pairing first so an
+    interrupted turn never persists a thread the Anthropic API will reject on the next request."""
+    convo = {**convo, "messages": _repair_tool_use_pairs(convo.get("messages") or [])}
     path = config.conversations_dir() / f"{cid}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
