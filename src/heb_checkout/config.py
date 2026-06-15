@@ -58,6 +58,12 @@ def checkout_lock_path() -> Path:
     return agent_home() / "data" / ".checkout.lock"
 
 
+def prefs_lock_path() -> Path:
+    """Cross-process mutex for preferences/staples read-modify-write. Separate from the
+    checkout lock so memory writes never serialize against (or stall) checkout."""
+    return agent_home() / "data" / ".preferences.lock"
+
+
 def auth_state_path() -> Path:
     # Shared with texas-grocery-mcp (its AUTH_STATE_PATH setting).
     return Path(os.environ.get("AUTH_STATE_PATH", "~/.texas-grocery-mcp/auth.json")).expanduser()

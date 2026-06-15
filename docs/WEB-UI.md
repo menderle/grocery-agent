@@ -51,9 +51,16 @@ The gateway/connector keep using port **8787**; the web UI uses **8788** — the
 
 - The web UI calls the **same** policy/approval/audit/checkout code as Claude. Spend caps,
   approval modes, quiet hours, the >10% overshoot abort, and dry-run all apply identically.
-- A **cross-process file lock** (`data/.checkout.lock`, see `src/heb_checkout/locking.py`)
-  serializes checkout, so the web UI and the Claude connector can never double-place an
-  order or consume one approval twice.
+- **The web chat cannot change policy or payment methods.** `set_policy`,
+  `update_payment_card`, and `remove_payment_card` are withheld from the autonomous web
+  agent (`GROCERY_WEB_TOOL_DENY`) so prompt-injected tool content (e.g. a crafted product
+  name) can't raise your own spend caps or swap your card. Change policy via the Claude
+  connector (human-in-the-loop) or by editing `config/policy.yaml`.
+- A **cross-process lock** (`data/.checkout.lock`, see `src/heb_checkout/locking.py`,
+  acquired off the event loop) serializes checkout, so the web UI and the Claude connector
+  can never double-place an order or consume one approval twice.
+- **Duplicate orders are skipped:** an identical cart (same items + total) placed within
+  ~15 minutes returns `duplicate_skipped` instead of charging again.
 - Keep `HEB_CHECKOUT_DRY_RUN=true` until you've watched a dry-run order go through.
 
 ## Remote access from your phone (private — not public)

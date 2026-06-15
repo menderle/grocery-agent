@@ -10,14 +10,17 @@ mutate the passed-in `messages` list in place, so the caller persists it after d
 """
 
 import json
+import re
 
 from anthropic import AsyncAnthropic
 from fastmcp import Client
 
 from heb_checkout import config as core
 from heb_checkout.gateway import build_gateway
+from . import config
 
 MAX_TOKENS = 8000
+_VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")  # Anthropic tool-name constraint
 
 
 def _system_prompt() -> str:
@@ -57,14 +60,17 @@ def _dump_block(block) -> dict:
 
 
 async def _anthropic_tools(gw: Client):
-    """MCP tools → Anthropic tool schemas. Returns (tools, name_map) where name_map maps
-    the (sanitized) Anthropic name back to the real gateway tool name."""
+    """MCP tools → Anthropic tool schemas. Returns (tools, name_map). Excludes tools on the
+    web-agent denylist (money-safety: no autonomous policy/wallet mutation) and any tool
+    whose name violates the Anthropic name constraint (would 400 the whole request)."""
+    denied = config.denied_tools()
     tools, name_map = [], {}
     for t in await gw.list_tools():
-        name = t.name
+        if t.name in denied or not _VALID_TOOL_NAME.match(t.name or ""):
+            continue
         schema = t.inputSchema or {"type": "object", "properties": {}}
-        tools.append({"name": name, "description": t.description or "", "input_schema": schema})
-        name_map[name] = t.name
+        tools.append({"name": t.name, "description": t.description or "", "input_schema": schema})
+        name_map[t.name] = t.name
     return tools, name_map
 
 
@@ -76,6 +82,10 @@ def _surface_outcome(tool_name: str, payload):
     if status == "needs_approval":
         yield {"event": "needs_approval", "data": {
             "approval_id": payload.get("approval_id"),
+            "order_total": payload.get("order_total"),
+            "items": payload.get("items") or [],
+            "fulfillment": payload.get("fulfillment"),
+            "slot_text": payload.get("slot_text"),
             "expires_at": payload.get("expires_at"),
             "reason": payload.get("reason"),
         }}
@@ -91,6 +101,10 @@ def _surface_outcome(tool_name: str, payload):
             "status": "dry_run",
             "total": payload.get("estimated_total"),
             "note": "Checkout rehearsed, not charged (dry-run mode).",
+        }}
+    elif status == "duplicate_skipped":
+        yield {"event": "order_outcome", "data": {
+            "status": "duplicate_skipped", "reason": payload.get("reason"),
         }}
     elif status in ("blocked", "aborted", "error"):
         yield {"event": "order_outcome", "data": {

@@ -1,0 +1,8 @@
+{
+  "_comment": "Brand/size/substitution preferences + phrase→product memory. Per-user (gitignored); install.sh seeds this from .example. The agent fills `items` via remember_item.",
+  "default_substitution": "ask",
+  "brands": {},
+  "avoid": [],
+  "notes": [],
+  "items": {}
+}

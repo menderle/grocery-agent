@@ -12,7 +12,7 @@
     <array>
         <string>/bin/zsh</string>
         <string>-c</string>
-        <string>cd __HOME__ &amp;&amp; set -a &amp;&amp; source .env &amp;&amp; exec .venv/bin/grocery-web</string>
+        <string>cd __HOME__ &amp;&amp; exec .venv/bin/grocery-web</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__HOME__</string>

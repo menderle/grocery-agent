@@ -11,10 +11,10 @@ serve:              ## stdio MCP server (local Claude Code/Desktop)
 	.venv/bin/heb-checkout
 
 serve-http:         ## full gateway over HTTP for remote/phone (OAuth for phone; LIST_DROP_TOKEN for /list)
-	set -a; [ -f .env ] && . ./.env; set +a; .venv/bin/grocery-gateway --http
+	.venv/bin/grocery-gateway --http   # .env is loaded in-process by config.load_env()
 
 web:                ## local web UI on 127.0.0.1:8788 (Claude agent over the in-process gateway; needs ANTHROPIC_API_KEY)
-	set -a; [ -f .env ] && . ./.env; set +a; .venv/bin/grocery-web
+	.venv/bin/grocery-web              # .env is loaded in-process by config.load_env()
 
 snapshot:           ## tar config + data + HEB session for migration to another host
 	zsh scripts/snapshot.sh

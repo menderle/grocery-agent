@@ -144,6 +144,10 @@ assert hit and hit["product_id"] == "123", hit
 assert preferences.resolve("water")["sku_id"] == "456"
 preferences.remember("water", brand="H-E-B")                 # merge: keeps the saved sku
 assert preferences.resolve("water")["sku_id"] == "456" and preferences.resolve("water")["brand"] == "H-E-B"
+assert preferences.resolve("rose water") is None             # exact-match: no generic false positive
+assert preferences.resolve("sparkling water") is None
+preferences.remember("water", overwrite=False, sku_id="999")  # auto-learn must NOT clobber curated
+assert preferences.resolve("water")["sku_id"] == "456"
 assert preferences.forget("water") is True
 assert preferences.resolve("water") is None
 preferences.add_staple("oat milk", quantity=2)

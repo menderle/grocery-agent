@@ -23,10 +23,12 @@ your actual store id into its instructions at runtime.)
 2. **Pick the fulfillment path**: for weekly/non-urgent orders use HEB
    (`product_search`/`cart_add`/`place_order`, curbside or scheduled delivery). For URGENT
    requests ("in the next hour", "right now", "ran out") use the **Favor** on-demand tools
-   (`favor_search`/`favor_preview_order`/`favor_place_order`, ≤25 items). If unsure, ask.
+   (`favor_search`/`favor_preview_order`/`favor_prepare_order`, ≤25 items; the agent builds
+   the Favor cart and the USER places it in the app — Favor's SMS gate blocks unattended
+   placement). If unsure, ask.
 3. **Build the cart**: for each item the user names loosely ("water", "my usual
    coffee"), call `recall_item` FIRST — if it returns a saved product, add that
-   product_id directly instead of re-asking. Otherwise `search_products` → `cart_add`
+   product_id directly instead of re-asking. Otherwise `product_search` → `cart_add`
    (confirm ambiguous matches: brand, size, quantity), then `remember_item` once the user
    picks one so it resolves automatically next time. `get_preferences` at the start loads
    brand/size/substitution + staples. Clip applicable coupons before checkout.

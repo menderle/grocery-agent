@@ -21,6 +21,7 @@ import tempfile
 from datetime import datetime
 
 from . import config
+from .locking import prefs_lock
 
 _DEFAULTS = {
     "_comment": "Brand/size/substitution preferences + phrase→product memory.",
@@ -68,53 +69,59 @@ def save(data: dict) -> None:
             os.unlink(tmp)
 
 
+_FIELDS = ("display_name", "product_id", "sku_id", "brand", "size", "quantity",
+          "substitution", "note")
+
+
 def resolve(phrase: str) -> dict | None:
-    """Return the remembered product for a phrase, or None. Tries an exact normalized
-    match first, then a containment match (stored key ⊆ query words, or vice versa)."""
+    """Return the remembered product for a phrase via EXACT normalized-key match.
+    `_key()` already collapses filler/quantity words ("buy a 12-pack of water" -> "water",
+    "add my usual water" -> "water"), so exact match handles the natural phrasings WITHOUT
+    the false positives that substring/containment matching caused — e.g. a saved "water"
+    must NOT silently resolve "rose water" or "sparkling water" to the wrong product, since
+    recall_item feeds the matched SKU straight into a cart that may be auto-checked-out."""
     items = load().get("items", {})
     key = _key(phrase)
     if not key:
         return None
-    if key in items:
-        return items[key]
-    qwords = set(key.split())
-    best = None
-    for k, entry in items.items():
-        kwords = set(k.split())
-        if kwords and (kwords <= qwords or qwords <= kwords):
-            # prefer the longest (most specific) overlapping key
-            if best is None or len(k) > len(best[0]):
-                best = (k, entry)
-    return best[1] if best else None
+    return items.get(key)
 
 
-def remember(phrase: str, **fields) -> dict:
+def remember(phrase: str, *, overwrite: bool = True, **fields) -> dict:
     """Record/merge the product the user wants for a phrase. Only non-None fields are
-    written, so a later call can add a brand without wiping the saved sku."""
-    data = load()
-    key = _key(phrase)
-    if not key:
-        raise ValueError("phrase is empty after normalization")
-    entry = data["items"].get(key, {})
-    entry["phrase"] = phrase
-    for k in ("display_name", "product_id", "sku_id", "brand", "size", "quantity",
-              "substitution", "note"):
-        v = fields.get(k)
-        if v is not None:
+    written, so a later call can add a brand without wiping the saved sku.
+
+    overwrite=True (explicit user remember_item): replace fields with new values.
+    overwrite=False (auto-learn from a placed order): only FILL MISSING fields — never
+    clobber a value the user curated for a colliding phrase."""
+    with prefs_lock():
+        data = load()
+        key = _key(phrase)
+        if not key:
+            raise ValueError("phrase is empty after normalization")
+        entry = data["items"].get(key, {})
+        entry.setdefault("phrase", phrase)
+        for k in _FIELDS:
+            v = fields.get(k)
+            if v is None:
+                continue
+            if not overwrite and entry.get(k) not in (None, ""):
+                continue  # auto-learn must not overwrite a curated value
             entry[k] = v
-    entry["updated_at"] = datetime.now().isoformat(timespec="seconds")
-    data["items"][key] = entry
-    save(data)
-    return {"key": key, **entry}
+        entry["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        data["items"][key] = entry
+        save(data)
+        return {"key": key, **entry}
 
 
 def forget(phrase: str) -> bool:
-    data = load()
-    key = _key(phrase)
-    if key in data.get("items", {}):
-        del data["items"][key]
-        save(data)
-        return True
+    with prefs_lock():
+        data = load()
+        key = _key(phrase)
+        if key in data.get("items", {}):
+            del data["items"][key]
+            save(data)
+            return True
     return False
 
 
@@ -157,26 +164,36 @@ def _save_staples(data: dict) -> None:
             os.unlink(tmp)
 
 
+def _staple_key(query: str) -> frozenset:
+    """Order-independent token set so 'whole milk gallon' and 'gallon of whole milk' are
+    the same staple."""
+    return frozenset(_key(query).split())
+
+
 def staples() -> list:
     return _load_staples().get("items", [])
 
 
 def add_staple(query: str, quantity: int = 1, substitution: str = "ask") -> list:
-    data = _load_staples()
-    items = data.setdefault("items", [])
-    for it in items:
-        if _key(it.get("query", "")) == _key(query):
-            it.update({"query": query, "quantity": quantity, "substitution": substitution})
-            break
-    else:
-        items.append({"query": query, "quantity": quantity, "substitution": substitution})
-    _save_staples(data)
-    return items
+    with prefs_lock():
+        data = _load_staples()
+        items = data.setdefault("items", [])
+        target = _staple_key(query)
+        for it in items:
+            if _staple_key(it.get("query", "")) == target:
+                it.update({"query": query, "quantity": quantity, "substitution": substitution})
+                break
+        else:
+            items.append({"query": query, "quantity": quantity, "substitution": substitution})
+        _save_staples(data)
+        return items
 
 
 def remove_staple(query: str) -> list:
-    data = _load_staples()
-    items = [it for it in data.get("items", []) if _key(it.get("query", "")) != _key(query)]
-    data["items"] = items
-    _save_staples(data)
-    return items
+    with prefs_lock():
+        data = _load_staples()
+        target = _staple_key(query)
+        items = [it for it in data.get("items", []) if _staple_key(it.get("query", "")) != target]
+        data["items"] = items
+        _save_staples(data)
+        return items

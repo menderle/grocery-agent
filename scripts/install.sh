@@ -36,6 +36,14 @@ if [ ! -f config/store.json ]; then
     echo "==> wrote config/store.json — EDIT IT with your store (ask the agent 'search HEB stores near <address>')"
 fi
 
+# 3b2. per-user state files (gitignored) — seed from templates if absent
+for f in preferences staples; do
+    if [ ! -f "data/$f.json" ] && [ -f "data/$f.json.example" ]; then
+        cp "data/$f.json.example" "data/$f.json"
+        echo "==> seeded data/$f.json from template"
+    fi
+done
+
 # 3c. optional local web UI note (additive; the Claude/MCP path needs none of this)
 if ! grep -q '^ANTHROPIC_API_KEY=' .env 2>/dev/null; then
     echo "==> (optional) Local web UI: add ANTHROPIC_API_KEY to .env, then run 'make web' (see docs/WEB-UI.md)"

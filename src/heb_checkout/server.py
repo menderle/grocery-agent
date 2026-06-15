@@ -14,9 +14,11 @@ from datetime import datetime
 
 from fastmcp import FastMCP
 
+import hashlib
+
 from . import approvals, audit, checkout_driver, config, policy, preferences
 from .checkout_driver import parse_dollars
-from .locking import checkout_lock
+from .locking import async_checkout_lock
 
 mcp = FastMCP("heb-checkout")
 
@@ -75,7 +77,7 @@ async def preview_order(fulfillment: str = "pickup") -> dict:
 
 @mcp.tool
 async def place_order(
-    expected_total: float,
+    expected_total: float | None = None,
     fulfillment: str = "pickup",
     slot_text: str | None = None,
     approval_id: str | None = None,
@@ -83,13 +85,16 @@ async def place_order(
 ) -> dict:
     """Place the order for the current HEB cart. expected_total: the order total from
     preview_order (policy evaluates against it, and checkout aborts if the on-screen
-    total comes out >10% higher). slot_text: substring of the chosen slot from
-    get_slots. approval_id: pass when the user has approved a pending order.
-    items: the cart contents as [{"name": ..., "quantity": ...}] — ALWAYS pass these
-    (from the cart tools) so purchase history powers suggest_replenishment.
+    total comes out >10% higher) — REQUIRED unless approval_id is given (an approval
+    carries its own total). slot_text: substring of the chosen slot from get_slots.
+    approval_id: pass when the user has approved a pending order (its stored total,
+    fulfillment, slot, and items govern). items: the cart contents as
+    [{"name": ..., "quantity": ...}] — ALWAYS pass these (from the cart tools) so
+    purchase history powers suggest_replenishment.
 
     Outcomes: placed | dry_run | needs_approval (returns approval_id to show the
-    user) | blocked (policy; not overridable) | aborted (total mismatch)."""
+    user) | blocked (policy; not overridable) | aborted (total mismatch) |
+    duplicate_skipped (an identical order was just placed)."""
     # Load policy BEFORE consuming the approval — a missing/broken policy.yaml must not
     # pop (burn) the user's approval while never placing the order.
     try:
@@ -97,11 +102,17 @@ async def place_order(
     except Exception as e:
         return {"status": "error", "reason": f"could not load policy: {e}"}
 
+    # expected_total is required for a fresh order; an approval carries its own total.
+    if not approval_id and (expected_total is None or expected_total <= 0):
+        return {"status": "error",
+                "reason": "expected_total (from preview_order) is required when no approval_id is given"}
+
     # One cross-process lock around the whole critical section (approval consume →
     # checkout → audit) so the web UI and the Claude connector can't double-place or
-    # both consume one approval. Uncontended (instant) for a single interface; only the
-    # rare simultaneous-checkout case waits. Money-safety semantics below are unchanged.
-    with checkout_lock():
+    # both consume one approval. Acquired off the event loop (async_checkout_lock), so a
+    # contending checkout waits without freezing the web server. Money-safety semantics
+    # below are unchanged.
+    async with async_checkout_lock():
         approved = False
         approval = None
         if approval_id:
@@ -128,12 +139,27 @@ async def place_order(
             return {
                 "status": "needs_approval",
                 "approval_id": approval["id"],
+                "order_total": expected_total,
+                "items": items or [],
+                "fulfillment": fulfillment,
+                "slot_text": slot_text,
                 "expires_at": approval["expires_at"],
                 "reason": decision.reason,
-                "next_step": "show the user the cart summary and total; on a yes, call place_order with this approval_id",
+                "next_step": "show the user the itemized cart, total, and slot; on a yes, call place_order with this approval_id",
             }
 
         dry_run = config.dry_run_default()
+        # Idempotency: for REAL orders, refuse to re-place an identical cart that was just
+        # placed (a confused retry, or a web+connector race that the lock serialized but
+        # would otherwise double-charge). Dry-runs always rehearse.
+        fingerprint = _cart_fingerprint(expected_total, items)
+        if not dry_run:
+            dup = _recent_placed(fingerprint, window_seconds=900)
+            if dup is not None:
+                return {"status": "duplicate_skipped",
+                        "reason": "an identical order was placed moments ago — not charging again",
+                        "confirmation": dup.get("confirmation"),
+                        "placed_at": dup.get("placed_at")}
         rec = audit.new_record("dry_run" if dry_run else "attempt", total=expected_total,
                                fulfillment=fulfillment, slot=slot_text, reason=decision.reason)
         try:
@@ -156,7 +182,8 @@ async def place_order(
             audit.new_record("placed", total=final_total, fulfillment=fulfillment,
                              slot=slot_text, confirmation=result.get("confirmation"),
                              unconfirmed=(status == "placed_unconfirmed"),
-                             items=items or [], attempt_id=rec["id"])
+                             items=items or [], attempt_id=rec["id"],
+                             fingerprint=fingerprint)
             _learn_items(items)  # remember what was bought (never affects the outcome)
         elif status == "aborted" and approved:
             # Pre-commit abort (total mismatch / Place-order disabled) — keep the yes usable.
@@ -164,9 +191,34 @@ async def place_order(
         return result
 
 
+def _cart_fingerprint(expected_total, items: list[dict] | None) -> str:
+    """Stable hash of (rounded total + normalized item set) to detect a duplicate order."""
+    norm = sorted(
+        (str(i.get("name", "")).strip().lower(), i.get("quantity"))
+        for i in (items or []) if isinstance(i, dict)
+    )
+    raw = json.dumps([round(float(expected_total or 0), 2), norm], sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _recent_placed(fingerprint: str, window_seconds: int) -> dict | None:
+    """Most recent placed order with this fingerprint within the window, else None."""
+    now = datetime.now()
+    for r in reversed(audit.placed_orders()):
+        if r.get("fingerprint") != fingerprint:
+            continue
+        try:
+            ts = datetime.fromisoformat(r["placed_at"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        return r if (now - ts).total_seconds() <= window_seconds else None
+    return None
+
+
 def _learn_items(items: list[dict] | None) -> None:
     """After a successful order, remember each item so 'add my usual X' recalls it later.
-    Best-effort: a memory write must never alter or fail the checkout outcome."""
+    Best-effort: a memory write must never alter or fail the checkout outcome, and it must
+    NOT overwrite a value the user has curated for a colliding phrase (overwrite=False)."""
     for item in items or []:
         if not isinstance(item, dict):
             continue
@@ -175,7 +227,7 @@ def _learn_items(items: list[dict] | None) -> None:
             continue
         try:
             preferences.remember(
-                name, display_name=name, quantity=item.get("quantity"),
+                name, overwrite=False, display_name=name, quantity=item.get("quantity"),
                 product_id=item.get("product_id"), sku_id=item.get("sku_id"),
             )
         except Exception:

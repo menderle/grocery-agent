@@ -3,7 +3,12 @@
 profiles/
 data/orders/
 data/web-conversations/
-data/.checkout.lock
+data/*.lock
+# per-user runtime/state (never commit — seeded from *.example by install.sh, or created by code)
+data/approvals.json
+data/.last-update-check
+data/preferences.json
+data/staples.json
 __pycache__/
 *.pyc
 .DS_Store

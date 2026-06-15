@@ -2,6 +2,8 @@
 expiry; approving releases exactly that order (same total, fulfillment, slot)."""
 
 import json
+import os
+import tempfile
 import uuid
 from datetime import datetime, timedelta
 
@@ -12,12 +14,26 @@ from .locking import checkout_lock
 def _load() -> dict:
     path = config.approvals_path()
     if path.exists():
-        return json.loads(path.read_text())
+        try:
+            return json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return {}
     return {}
 
 
 def _save(data: dict) -> None:
-    config.approvals_path().write_text(json.dumps(data, indent=2))
+    """Atomic, self-sufficient write (temp + os.replace) so a crash mid-write can't
+    corrupt the pending-approval ledger, and the data/ dir is created if missing."""
+    path = config.approvals_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(data, indent=2))
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def create(order_total: float, fulfillment: str, slot_text: str | None, expiry_hours: float,

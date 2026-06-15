@@ -2,6 +2,8 @@
 in data/orders/; the policy engine reads these back for rolling spend totals."""
 
 import json
+import os
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +19,16 @@ def new_record(kind: str, **fields) -> dict:
         **fields,
     }
     path = config.orders_dir() / f"{rec['placed_at'].replace(':', '')}-{rec['kind']}-{rec['id']}.json"
-    path.write_text(json.dumps(rec, indent=2))
+    # Atomic write so a crash can't leave a half-written record that all_records() then
+    # silently drops (which would undercount rolling spend).
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(rec, indent=2))
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
     return rec
 
 
@@ -32,8 +43,21 @@ def all_records() -> list[dict]:
 
 
 def placed_orders() -> list[dict]:
-    """Only real, completed purchases count toward spend limits."""
-    return [r for r in all_records() if r.get("kind") == "placed" and "total" in r]
+    """Only real, completed purchases count toward spend limits. Defensive: a record with
+    a non-numeric total or an unparseable timestamp is skipped rather than crashing every
+    spend calculation downstream (get_policy, policy.evaluate, /api/status)."""
+    out = []
+    for r in all_records():
+        if r.get("kind") != "placed":
+            continue
+        if not isinstance(r.get("total"), (int, float)):
+            continue
+        try:
+            datetime.fromisoformat(r["placed_at"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        out.append(r)
+    return out
 
 
 def screenshots_dir(order_id: str) -> Path:
