@@ -208,6 +208,15 @@ _res_nl = _aio.run(server.place_order(9.0, items=[{"name": "Eggs", "quantity": 1
 assert _res_nl.get("status") == "needs_login", _res_nl
 server.session_live = lambda: True  # restore for anything downstream
 
+# --- slot price classifier: free vs paid express, incl. cross-day same-time dedupe ---
+from heb_checkout.checkout_driver import _slots_by_price as _sbp  # noqa: E402
+_f, _p = _sbp("Under 2 hours $7.95 1:00-1:30 PM 1:30-2:00 PM 2-4 hours $4.95 2:00-2:30 PM "
+              "Evening Free 5:30-6:00 PM 6:00-6:30 PM")
+assert "1:00-1:30 PM" in _p and "5:30-6:00 PM" in _f, (_f, _p)          # paid express vs free
+assert "5:30-6:00 PM" not in _p and "1:00-1:30 PM" not in _f, (_f, _p)  # never cross-tagged
+_f2, _p2 = _sbp("Today Under 2 hours $7.95 1:00-1:30 PM Tomorrow Afternoon Free 1:00-1:30 PM")
+assert "1:00-1:30 PM" in _f2 and "1:00-1:30 PM" in _p2, (_f2, _p2)      # same clock time kept in BOTH
+
 # --- new sources gate correctly when unconfigured ---
 result = lists.read_all()
 assert "todoist" not in result["sources"] and "notion" not in result["sources"]

@@ -36,11 +36,12 @@ async def _assert_logged_in(page: Page) -> None:
 SELECTORS = {
     "choose_time": "button:has-text('Choose pickup time'), button:has-text('Choose delivery time'), button:has-text('Change time')",
     "fulfillment_tab": "button[role='tab'], [role='tablist'] button",  # Curbside / Delivery
-    "scheduled_expander": "text=Scheduled",
-    "select_time": "button:has-text('Select this time')",
-    # HEB uses data-qe-id="placeOrderButton" for the submit on BOTH cart ('Start
-    # checkout') and /checkout ('Place order') — disambiguate by label.
-    "start_checkout": "button[data-qe-id='placeOrderButton']:has-text('Start checkout'), button:has-text('Start checkout')",
+    "scheduled_expander": "button[aria-label*='Scheduled time slots'], button[aria-label*='View Scheduled'], button:has-text('Scheduled')",
+    "select_time": "button:has-text('Select this time'), button:has-text('Reserve this time')",
+    # HEB uses data-qe-id="placeOrderButton" for the submit on BOTH cart ('Start checkout')
+    # and /checkout ('Place order') — disambiguate by label. The cart also exposes a
+    # 'footerStartCheckout' variant.
+    "start_checkout": "button[data-qe-id='placeOrderButton']:has-text('Start checkout'), button[data-qe-id='footerStartCheckout'], button:has-text('Start checkout')",
     "precheckout_continue": "a:has-text('Continue'), button:has-text('Continue')",
     "place_order": "button[data-qe-id='placeOrderButton']:has-text('Place order'), button:has-text('Place order')",
 }
@@ -104,12 +105,38 @@ async def _open_time_chooser(page: Page, fulfillment: str) -> None:
         await human_pause()
 
 
-async def _slot_texts(page: Page) -> list[str]:
-    """Visible time-slot labels like '7:00–7:30 AM' in the reserve dialog."""
+async def _dialog_text(page: Page) -> str:
+    """Normalized text of the open reserve dialog (or the page if no modal is up)."""
     dlg = page.locator("[role='dialog']").first
     scope = dlg if await dlg.count() else page
-    text = " ".join((await scope.inner_text()).split())
-    return re.findall(r"\d{1,2}:\d{2}[–-]\d{1,2}:\d{2}\s*[AP]M", text)
+    return " ".join((await scope.inner_text()).split())
+
+
+# Reserve-dialog token scan: time ranges sit under headers that are either a price ("Under 2
+# hours $7.95" = paid express) or "Free" ("Afternoon Free" = free pickup). Tag each range by
+# the most recent header so the walk defaults to a FREE slot — a paid express fee would push the
+# checkout total past the approved amount and trip the >10% abort.
+_RANGE = r"\d{1,2}:\d{2}\s*[–-]\s*\d{1,2}:\d{2}\s*[AP]M"
+_TOKEN_RE = re.compile(r"\$\d+\.\d{2}|\bFree\b|" + _RANGE)
+
+
+def _slots_by_price(text: str) -> tuple[list[str], list[str]]:
+    free: list[str] = []
+    paid: list[str] = []
+    paid_ctx = False
+    seen: set[tuple[bool, str]] = set()
+    for tok in _TOKEN_RE.findall(text):
+        tok = tok.strip()
+        if tok.startswith("$"):
+            paid_ctx = True
+        elif tok == "Free":
+            paid_ctx = False
+        else:
+            key = (paid_ctx, tok)
+            if key not in seen:  # dedupe per-bucket so a free time isn't lost to a same-clock paid one
+                seen.add(key)
+                (paid if paid_ctx else free).append(tok)
+    return free, paid
 
 
 async def get_slots(fulfillment: str, headless: bool = True) -> dict:
@@ -118,8 +145,9 @@ async def get_slots(fulfillment: str, headless: bool = True) -> dict:
         await _assert_logged_in(page)
         await page.wait_for_timeout(6000)  # cart fulfillment controls render async
         await _open_time_chooser(page, fulfillment)
-        slots = await _slot_texts(page)
-        return {"fulfillment": fulfillment, "slots": slots, "slot_count": len(slots)}
+        free, paid = _slots_by_price(await _dialog_text(page))
+        return {"fulfillment": fulfillment, "free_slots": free, "paid_slots": paid,
+                "slots": free + paid, "slot_count": len(free) + len(paid)}
 
 
 async def _reserve_and_advance(page: Page, fulfillment: str, slot_text: str | None,
@@ -127,26 +155,57 @@ async def _reserve_and_advance(page: Page, fulfillment: str, slot_text: str | No
     """Cart → reserve a slot (unless one is already reserved) → Start checkout →
     past the precheckout upsell."""
     await _dismiss_modals(page)  # 'What's New' covers intercept every click
-    start = page.locator(SELECTORS["start_checkout"]).first
-    if not await start.count():
-        # No slot reserved yet — go through the time chooser.
+    # A slot is reserved iff the time control reads 'Change time'. While it still reads
+    # 'Choose pickup/delivery time', NO slot is reserved — and the Start-checkout button is
+    # present on the cart REGARDLESS of reservation, so its presence is NOT a reliable signal
+    # (gating on it skipped reservation entirely and stalled the walk on the cart).
+    reserved = await page.locator("button:has-text('Change time')").first.count() > 0
+    unreserved = await page.locator(
+        "button:has-text('Choose pickup time'), button:has-text('Choose delivery time')"
+    ).first.count() > 0
+    if not reserved and not unreserved:
+        raise RuntimeError("the cart's time control didn't render — can't tell if a slot is "
+                           "reserved (cart still loading, or empty)")
+    if unreserved:
         await _open_time_chooser(page, fulfillment)
-        slots = await _slot_texts(page)
-        if not slots:
-            raise RuntimeError("no time slots offered (store/day may be full)")
-        target = slot_text
-        if target:
-            target = next((s for s in slots if slot_text.replace(" ", "") in s.replace(" ", "")), None)
-        chosen = target or slots[0]
-        await page.locator(f"text={chosen}").first.click()
+        dlg = page.locator("[role='dialog']").first
+        scope = dlg if await dlg.count() else page
+        free, paid = _slots_by_price(await _dialog_text(page))
+        if slot_text:
+            chosen = next((s for s in (free + paid)
+                           if slot_text.replace(" ", "") in s.replace(" ", "")), None)
+            if not chosen:
+                raise RuntimeError(f"requested slot '{slot_text}' isn't offered; "
+                                   f"available: {(free + paid)[:6]}")
+        elif free:
+            chosen = free[0]  # earliest FREE pickup slot — never auto-pick a paid express fee
+        else:
+            raise RuntimeError("no free pickup slots available right now — "
+                               "tell me a specific time or try a later day")
+        # Scope the click to the reserve dialog so a bare time string can't match unrelated page
+        # text; '.first' still applies within the dialog.
+        await scope.locator(f"text={chosen}").first.click()
         await human_pause()
         sel = page.locator(SELECTORS["select_time"]).first
         if await sel.count():
             await sel.click()
             await human_pause(2.0, 4.0)
-        start = page.locator(SELECTORS["start_checkout"]).first
+        # SAFETY NET: the same clock time can exist as a paid express slot (earlier in DOM) and a
+        # free one, so a bare-text '.first' click could grab the paid one even when we chose free.
+        # When WE auto-picked the free default, verify no pickup/delivery fee was added — abort
+        # PRE-commit (approval restored) rather than reserve a paid express slot.
+        if not slot_text:
+            body = " ".join((await page.locator("body").inner_text()).split())
+            fee = re.search(r"(?:Curbside|Delivery)\s+fee\s+\$([\d.]+)", body)
+            if fee and float(fee.group(1)) > 0:
+                raise RuntimeError(
+                    f"the auto-selected pickup slot added a ${fee.group(1)} fee — refusing a paid "
+                    "express slot; ask the user for a specific free time or a later day")
     await _shot(page, order_id, "01-slot-reserved")
 
+    start = page.locator(SELECTORS["start_checkout"]).first
+    if not await start.count():
+        raise RuntimeError("no 'Start checkout' button after reserving a slot (layout changed)")
     await start.click()
     await page.wait_for_load_state("domcontentloaded")
     await human_pause(2.0, 4.0)
@@ -170,13 +229,18 @@ async def _reserve_and_advance(page: Page, fulfillment: str, slot_text: str | No
 
 
 async def _select_payment(page: Page) -> bool:
-    """Click the saved card so 'Place order' enables. Returns True once Place order is
-    actually enabled (verified), not merely clicked."""
+    """The saved primary card is normally pre-selected on /checkout, so 'Place order' is
+    already enabled — just confirm that. Only if it's disabled do we click the saved card,
+    matched by its card ROW ('Card number' / 'ending in' / masked '****') rather than brand
+    text: brand words like 'Discover' otherwise match unrelated nav ('Discover our brands
+    menu') and hang the walk for the full action timeout."""
     po = page.locator(SELECTORS["place_order"]).first
-    for label in ("Mastercard", "Visa", "Discover", "American Express", "ending"):
-        card = page.locator("button", has=page.locator(f"text={label}")).first
-        if not await card.count():
-            continue
+    if await po.count() and not await po.is_disabled():
+        return True
+    card = page.locator(
+        "button:has-text('Card number'), button:has-text('ending in'), button:has-text('****')"
+    ).first
+    if await card.count():
         for _ in range(2):  # first click occasionally doesn't register
             await card.click()
             await human_pause(1.5, 3.0)
