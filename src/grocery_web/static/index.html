@@ -279,7 +279,7 @@ let busy=false,activeApprove=null,ac=null,lastUserText="";
 function setBusy(b){busy=b;const s=$("#send");if(b){s.innerHTML=I.stop;s.classList.add("stop");s.setAttribute("aria-label","Stop");}else{s.innerHTML=I.send;s.classList.remove("stop");s.setAttribute("aria-label","Send");}}
 
 async function refreshStatus(){
-  try{const s=await(await fetch("/api/status",{headers:authHeaders()})).json();
+  try{const s=await(await fetch("/api/status",{cache:"no-store",headers:authHeaders()})).json();
     const dry=$("#b-dry");
     if(s.dry_run===false){dry.className="pill live";dry.innerHTML=I.alert+"Live · real charges";document.body.classList.add("live-mode");}
     else{dry.className="pill safe";dry.innerHTML=I.shield+"Dry-run · safe";document.body.classList.remove("live-mode");}
@@ -291,7 +291,7 @@ async function refreshStatus(){
 }
 const TAG={sonnet:"fast",opus:"most capable",haiku:"cheapest"};
 async function initConfig(){
-  try{const c=await(await fetch("/api/config",{headers:authHeaders()})).json();
+  try{const c=await(await fetch("/api/config",{cache:"no-store",headers:authHeaders()})).json();
     const sel=$("#model");sel.innerHTML="";
     (c.models||[]).forEach(m=>{const o=document.createElement("option");o.value=m.alias;
       o.textContent=m.alias.charAt(0).toUpperCase()+m.alias.slice(1)+(TAG[m.alias]?" · "+TAG[m.alias]:"");sel.appendChild(o);});

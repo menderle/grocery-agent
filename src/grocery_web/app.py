@@ -27,6 +27,7 @@ from starlette.staticfiles import StaticFiles
 from . import agent, config
 
 STATIC = Path(__file__).parent / "static"
+NOSTORE = {"cache-control": "no-store"}  # page + API must never be cached (status goes stale)
 
 
 # ---------- conversation store (per-restart durable; chat threads on disk) ----------
@@ -78,7 +79,7 @@ async def _read_json(request):
 # ---------- routes ----------
 
 async def index(request):
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers=NOSTORE)
 
 
 async def api_config(request):
@@ -86,7 +87,7 @@ async def api_config(request):
         "models": config.model_choices(),
         "default_model": config.default_alias(),
         "auth_required": bool(config.web_auth_token()),
-    })
+    }, headers=NOSTORE)
 
 
 async def api_status(request):
@@ -105,13 +106,13 @@ async def api_status(request):
         "heb_session_present": auth.exists(),
         "policy_mode": mode,
         "spent_last_7_days": spent7,
-    })
+    }, headers=NOSTORE)
 
 
 async def health(request):
     from heb_checkout import config as core
     auth = core.auth_state_path()
-    return JSONResponse({"ok": auth.exists(), "dry_run_mode": core.dry_run_default()})
+    return JSONResponse({"ok": auth.exists(), "dry_run_mode": core.dry_run_default()}, headers=NOSTORE)
 
 
 def _sse(gen):
