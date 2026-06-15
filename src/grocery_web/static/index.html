@@ -37,12 +37,13 @@
     }
   }
   *{box-sizing:border-box}
-  html,body{height:100%}
+  html,body{height:100%;overflow:hidden}  /* only #log scrolls; stops iOS page-jump on keyboard */
   body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font);
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overscroll-behavior:none}
   button,select,textarea,input{font:inherit;color:inherit}
   .app{display:flex;flex-direction:column;height:100dvh;height:var(--app-h,100dvh);
-    max-width:var(--maxw);margin:0 auto;background:var(--bg);position:relative;overflow:hidden}
+    position:fixed;top:var(--app-top,0);left:0;right:0;max-width:var(--maxw);margin:0 auto;
+    background:var(--bg);overflow:hidden}
   @media (min-width:780px){ .app{border-left:1px solid var(--border);border-right:1px solid var(--border)} }
 
   #livebar{display:none}
@@ -232,7 +233,8 @@ $("#mark").innerHTML=I.leaf; $("#newchat").innerHTML=I.edit; $("#send").innerHTM
 $("#jump").innerHTML=I.down+"Latest"; $("#livebar").innerHTML=I.alert+"LIVE · real charges will be made";
 
 (function(){const vv=window.visualViewport;if(!vv)return;
-  const fit=()=>document.documentElement.style.setProperty('--app-h',vv.height+'px');
+  const r=document.documentElement.style;
+  const fit=()=>{r.setProperty('--app-h',vv.height+'px');r.setProperty('--app-top',vv.offsetTop+'px');window.scrollTo(0,0);};
   vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit);fit();})();
 
 const urlTok=new URLSearchParams(location.search).get("token");
@@ -400,6 +402,7 @@ async function approve(id){setBusy(true);showTyping();ac=new AbortController();
 
 function autoGrow(){const i=$("#input");i.style.height="auto";i.style.height=Math.min(i.scrollHeight,140)+"px";}
 $("#input").addEventListener("input",autoGrow);
+$("#input").addEventListener("focus",()=>setTimeout(()=>scroll(true),300));  /* keep latest visible above keyboard */
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!busy)send();}});
 $("#send").onclick=()=>{if(busy){if(ac)ac.abort();}else send();};
 $("#newchat").onclick=()=>{if(busy&&ac)ac.abort();CID=newId();localStorage.setItem("gw_cid",CID);log.innerHTML="";renderEmpty();};
