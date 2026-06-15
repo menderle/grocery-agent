@@ -36,6 +36,16 @@ else
     fi
 fi
 
+# Parked Chrome (the genuine warm browser on :9222) is the ONLY reliable session-refresh
+# source — and auth.json can look fresh even when it's down. If it's unreachable the session
+# will go stale and orders will fail, so alert loudly to prompt a re-login before that happens.
+if ! curl -s --max-time 3 "http://127.0.0.1:9222/json/version" >/dev/null 2>&1; then
+    osascript -e "display notification \"Parked Chrome is DOWN — HEB orders will fail until you run scripts/start_parked_chrome.sh and sign in.\" with title \"Grocery agent: parked Chrome\"" 2>/dev/null
+    echo "$(date -Iseconds) PARKED-CHROME: down (:9222 unreachable)"
+else
+    echo "$(date -Iseconds) parked-chrome: up"
+fi
+
 # Weekly upstream update check (stamp file throttles to every 7 days).
 STAMP=data/.last-update-check
 if [[ ! -f "$STAMP" || -n "$(find "$STAMP" -mtime +7 2>/dev/null)" ]]; then

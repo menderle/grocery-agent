@@ -112,16 +112,16 @@ async def api_status(request):
         mode = policy.load().get("mode")
     except Exception:
         mode = None
-    auth = core.auth_state_path()
     try:
         from heb_checkout.gateway import _store
         sid, sname = _store()
         store = f"{sname} · {sid}"
     except Exception:
         store = None
+    from heb_checkout.browser import session_live
     return JSONResponse({
         "dry_run": core.dry_run_default(),
-        "heb_session_present": auth.exists(),
+        "heb_session_present": session_live(),  # durable HEB login present, not just the auth file existing
         "policy_mode": mode,
         "spent_last_7_days": spent7,
         "store": store,

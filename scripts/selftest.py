@@ -15,6 +15,13 @@ pathlib.Path(tmp, "config").mkdir()
 pathlib.Path(tmp, "data").mkdir()
 repo = pathlib.Path(__file__).resolve().parents[1]
 shutil.copy(repo / "config" / "policy.yaml", tmp + "/config/policy.yaml")
+# The decision assertions below assume the default 'approve' mode, but the live repo
+# policy.yaml may be full_auto (the app writes the user's autonomy choice straight there),
+# so pin a known mode — the policy-engine test must not depend on the user's current setting.
+import yaml as _yaml0  # noqa: E402
+_pf0 = pathlib.Path(tmp, "config", "policy.yaml")
+_pd0 = _yaml0.safe_load(_pf0.read_text()); _pd0["mode"] = "approve"
+_pf0.write_text(_yaml0.safe_dump(_pd0))
 
 from heb_checkout import approvals, audit, policy  # noqa: E402
 
@@ -190,9 +197,16 @@ async def _fake_place(fulfillment, slot_text, order_id, dry_run, max_total):
 
 
 _cd.place = _fake_place
+server.session_live = lambda: True  # checkout pre-flight: don't depend on a live HEB session here
 _res = _aio.run(server.place_order(7.5, items=[{"name": "Milk", "quantity": 2}]))
 assert _res.get("status") == "placed", _res
 assert any(r.get("kind") == "placed" and r.get("fingerprint") for r in audit.all_records()), "placed record missing fingerprint"
+
+# session pre-flight: a signed-out session returns needs_login and never places/charges
+server.session_live = lambda: False
+_res_nl = _aio.run(server.place_order(9.0, items=[{"name": "Eggs", "quantity": 1}]))
+assert _res_nl.get("status") == "needs_login", _res_nl
+server.session_live = lambda: True  # restore for anything downstream
 
 # --- new sources gate correctly when unconfigured ---
 result = lists.read_all()

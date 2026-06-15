@@ -41,7 +41,10 @@ def _system_prompt(gateway_instructions: str | None = None) -> str:
         "## Web chat\n"
         "You are in a web chat. When place_order returns status 'needs_approval', STOP "
         "and present the cart summary and total — the UI shows an Approve button; do NOT "
-        "call place_order again yourself. The user clicks Approve to confirm. Use "
+        "call place_order again yourself. The user clicks Approve to confirm. When "
+        "preview_order or place_order returns status 'needs_login', the H-E-B session is "
+        "signed out — tell the user it needs a quick re-login on the host and do NOT retry "
+        "(it won't work until they re-login); nothing was charged. Use "
         "recall_item/get_preferences to reuse the user's remembered picks, and "
         "remember_item when they choose a product."
     )
@@ -115,6 +118,12 @@ def _surface_outcome(tool_name: str, payload):
     elif status == "duplicate_skipped":
         yield {"event": "order_outcome", "data": {
             "status": "duplicate_skipped", "reason": payload.get("reason"),
+        }}
+    elif status == "needs_login":
+        yield {"event": "order_outcome", "data": {
+            "status": "needs_login",
+            "reason": payload.get("reason"),
+            "recovery": payload.get("recovery"),
         }}
     elif status in ("blocked", "aborted", "error"):
         yield {"event": "order_outcome", "data": {

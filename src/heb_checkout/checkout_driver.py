@@ -16,9 +16,22 @@ import re
 from playwright.async_api import Page
 
 from . import audit
-from .browser import heb_page, human_pause
+from .browser import SessionExpiredError, heb_page, human_pause
 
 CART_URL = "https://www.heb.com/cart"
+
+# If heb.com bounces an unauthenticated request to a sign-in PATH, the session is dead.
+# Anchored to path segments so a stray 'signin' in a query string can't false-trigger an abort.
+_LOGIN_URL_MARKERS = ("/login", "/signin", "/sign-in", "/account/sign")
+
+
+async def _assert_logged_in(page: Page) -> None:
+    """After landing on the cart, if HEB redirected us to a sign-in page the session is
+    expired — fail fast with a typed error so the caller surfaces 'needs_login' rather than
+    timing out deep in the walk on a control that will never render."""
+    url = (page.url or "").lower()
+    if any(m in url for m in _LOGIN_URL_MARKERS):
+        raise SessionExpiredError("heb.com redirected to sign-in — HEB session expired")
 
 SELECTORS = {
     "choose_time": "button:has-text('Choose pickup time'), button:has-text('Choose delivery time'), button:has-text('Change time')",
@@ -102,6 +115,7 @@ async def _slot_texts(page: Page) -> list[str]:
 async def get_slots(fulfillment: str, headless: bool = True) -> dict:
     async with heb_page(headless=headless) as page:
         await page.goto(CART_URL, wait_until="domcontentloaded")
+        await _assert_logged_in(page)
         await page.wait_for_timeout(6000)  # cart fulfillment controls render async
         await _open_time_chooser(page, fulfillment)
         slots = await _slot_texts(page)
@@ -174,6 +188,7 @@ async def _select_payment(page: Page) -> bool:
 async def preview(fulfillment: str, order_id: str, headless: bool = True) -> dict:
     async with heb_page(headless=headless) as page:
         await page.goto(CART_URL, wait_until="domcontentloaded")
+        await _assert_logged_in(page)
         await page.wait_for_timeout(6000)
         await _reserve_and_advance(page, fulfillment, None, order_id)
         ready = await _select_payment(page)
@@ -192,6 +207,7 @@ async def place(fulfillment: str, slot_text: str | None, order_id: str,
                 max_total: float | None = None) -> dict:
     async with heb_page(headless=headless) as page:
         await page.goto(CART_URL, wait_until="domcontentloaded")
+        await _assert_logged_in(page)
         await page.wait_for_timeout(6000)
         await _reserve_and_advance(page, fulfillment, slot_text, order_id)
 

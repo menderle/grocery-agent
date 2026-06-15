@@ -466,7 +466,7 @@ function renderApprove(d){
   log.appendChild(card);scroll();
 }
 function finalizeApprove(d){if(!activeApprove)return;
-  const t={placed:"Order placed",placed_unconfirmed:"Submitted",dry_run:"Rehearsed (dry-run)",blocked:"Blocked",aborted:"Aborted",duplicate_skipped:"Already placed"};
+  const t={placed:"Order placed",placed_unconfirmed:"Submitted",dry_run:"Rehearsed (dry-run)",blocked:"Blocked",aborted:"Aborted",duplicate_skipped:"Already placed",needs_login:"Signed out"};
   activeApprove.innerHTML=((d.status==="placed"||d.status==="dry_run")?I.check:"")+(t[d.status]||"Done");activeApprove.disabled=true;activeApprove=null;}
 function resetApprove(){if(activeApprove){activeApprove.disabled=false;activeApprove.innerHTML=I.check+"Approve &amp; place";activeApprove=null;}}
 function renderOutcome(d){
@@ -476,6 +476,7 @@ function renderOutcome(d){
     duplicate_skipped:["warn",I.shield,esc(d.reason||"An identical order was just placed — not charged again.")],
     blocked:["bad",I.ban,"<b>Blocked by your policy.</b> "+esc(d.reason||"")],
     aborted:["bad",I.alert,"<b>Aborted.</b> "+esc(d.reason||"total mismatch")],
+    needs_login:["bad",I.alert,"<b>H-E-B is signed out.</b> It needs a quick re-login on the host computer — nothing was charged."],
     error:["bad",I.alert,esc(d.reason||"Something went wrong.")]};
   const[c,ic,html]=map[d.status]||map.error;
   const card=elc("out "+c,ic+"<div>"+html+"</div>");

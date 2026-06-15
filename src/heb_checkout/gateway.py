@@ -12,6 +12,7 @@ Run:  grocery-gateway            (stdio)
       grocery-gateway --http     (HTTP on MCP_HTTP_PORT, bearer-token auth, /health)
 """
 
+import asyncio
 import os
 import sys
 from datetime import datetime
@@ -20,7 +21,8 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 from . import config
-from .server import mcp as checkout
+from .browser import session_live
+from .server import _parked_chrome_up, mcp as checkout
 
 try:
     from favor_checkout.server import mcp as favor_mcp
@@ -89,6 +91,10 @@ def build_gateway() -> FastMCP:
             "with that approval_id after an explicit yes. Always pass `items` (the cart "
             "contents) to place_order. Never work around a 'blocked' response: those are "
             "the user's own hard limits.\n\n"
+            "SESSION HEALTH: if preview_order or place_order returns status 'needs_login', "
+            "the HEB session is signed out — tell the user it needs a quick re-login on the "
+            "host (use the result's 'recovery' text) and do NOT retry the checkout; it won't "
+            "work until they re-login. Nothing was charged.\n\n"
             "FULFILLMENT ROUTING — two delivery paths:\n"
             "  - HEB scheduled (the product_search/cart/place_order tools): curbside or "
             "scheduled home delivery. Default for weekly stock-ups and anything not urgent.\n"
@@ -135,6 +141,8 @@ def build_gateway() -> FastMCP:
             "session_file_age_hours": round(
                 (datetime.now().timestamp() - auth.stat().st_mtime) / 3600, 1
             ) if auth.exists() else None,
+            "session_authenticated": session_live(),  # durable login cookies valid, not just file present
+            "parked_chrome_up": await asyncio.to_thread(_parked_chrome_up),  # probe off-loop (≤1s)
             "dry_run_mode": config.dry_run_default(),
         })
 

@@ -8,6 +8,7 @@ Transport: stdio only (local Claude Code / Claude Desktop, or mounted inside
 grocery-gateway). The public, OAuth-secured HTTP endpoint is `grocery-gateway --http`.
 """
 
+import asyncio
 import hashlib
 import json
 import os
@@ -17,9 +18,39 @@ from datetime import datetime
 from fastmcp import FastMCP
 
 from . import approvals, audit, checkout_driver, config, policy, preferences
+from .browser import SessionExpiredError, session_live
 from .locking import async_checkout_lock
 
 mcp = FastMCP("heb-checkout")
+
+
+def _needs_login(detail: str = "") -> dict:
+    """Structured outcome when the HEB session is signed out — recoverable by re-login, NOT a
+    money/policy failure and NOT a transient error to retry. The web UI renders it as a clear
+    banner; the agent should surface it and stop, not re-drive the checkout."""
+    reason = ("Your H-E-B session is signed out, so I can't reach the cart or checkout. "
+              "It needs a quick re-login on the host computer.")
+    if detail:
+        reason += f" ({detail})"
+    return {
+        "status": "needs_login",
+        "reason": reason,
+        "recovery": "On the Mac: make sure the parked Chrome window is logged in to H-E-B "
+                    "(scripts/start_parked_chrome.sh, then sign in), or run "
+                    "scripts/sync_parked_session.py. No order was placed.",
+    }
+
+
+def _parked_chrome_up(port: int = 9222) -> bool:
+    """Is the parked logged-in Chrome — the ONLY reliable session-refresh source — alive?
+    Its auth.json can look fresh (synced every 180s) even when this is down, so health checks
+    must probe the browser itself, not just the file's age."""
+    import urllib.request
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1)
+        return True
+    except Exception:
+        return False
 
 
 @mcp.tool
@@ -55,7 +86,10 @@ def set_policy(field: str, value: str) -> dict:
 @mcp.tool
 async def get_slots(fulfillment: str = "both") -> dict:
     """Available HEB time slots. fulfillment: 'pickup', 'delivery', or 'both'
-    (side-by-side, for suggesting times against the user's calendar)."""
+    (side-by-side, for suggesting times against the user's calendar). May return status
+    'needs_login' if the HEB session is signed out."""
+    if not session_live():
+        return _needs_login()
     kinds = ["pickup", "delivery"] if fulfillment == "both" else [fulfillment]
     out = {}
     for kind in kinds:
@@ -69,9 +103,15 @@ async def get_slots(fulfillment: str = "both") -> dict:
 @mcp.tool
 async def preview_order(fulfillment: str = "pickup") -> dict:
     """Walk the current cart to the final review screen and report itemized total,
-    fees, and the saved payment method. Never places an order, never charges."""
+    fees, and the saved payment method. Never places an order, never charges. May return
+    status 'needs_login' if the HEB session is signed out."""
+    if not session_live():
+        return _needs_login()
     rec = audit.new_record("preview", fulfillment=fulfillment)
-    return await checkout_driver.preview(fulfillment, rec["id"])
+    try:
+        return await checkout_driver.preview(fulfillment, rec["id"])
+    except SessionExpiredError as e:
+        return _needs_login(str(e))
 
 
 @mcp.tool
@@ -93,7 +133,13 @@ async def place_order(
 
     Outcomes: placed | dry_run | needs_approval (returns approval_id to show the
     user) | blocked (policy; not overridable) | aborted (total mismatch) |
-    duplicate_skipped (an identical order was just placed)."""
+    duplicate_skipped (an identical order was just placed) | needs_login (HEB session
+    signed out — re-login on the host; nothing was placed)."""
+    # Pre-flight: a signed-out HEB session can't reach checkout. Fail fast with a clear
+    # re-login prompt BEFORE acquiring the lock or consuming the approval — never burn the
+    # user's 'yes' (or block another checkout) on a session we already know is dead.
+    if not session_live():
+        return _needs_login()
     # Load policy BEFORE consuming the approval — a missing/broken policy.yaml must not
     # pop (burn) the user's approval while never placing the order.
     try:
@@ -168,6 +214,13 @@ async def place_order(
                 fulfillment, slot_text, rec["id"],
                 dry_run=dry_run, max_total=round(expected_total * 1.10, 2),
             )
+        except SessionExpiredError as e:
+            # Session died mid-walk (after the pre-flight) — heb_page() / _assert_logged_in
+            # raise only BEFORE the Place-order click, so this is always pre-commit: restore
+            # the approval (keep the yes usable) and surface a clear re-login, not a raw error.
+            if approved:
+                approvals.restore(approval)
+            return _needs_login(str(e))
         except Exception:
             # place() never raises AFTER the commit click, so any exception here is
             # pre-commit and safe to restore the approval for a retry.
@@ -432,6 +485,8 @@ async def health(request):
         "session_file_exists": auth.exists(),
         "session_file_age_hours": round((datetime.now().timestamp() - auth.stat().st_mtime) / 3600, 1)
         if auth.exists() else None,
+        "session_authenticated": session_live(),  # durable login cookies valid, not just file present
+        "parked_chrome_up": await asyncio.to_thread(_parked_chrome_up),  # probe off-loop (≤1s)
         "dry_run_mode": config.dry_run_default(),
     })
 
