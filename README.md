@@ -1,13 +1,14 @@
 # 🛒 Grocery Agent
 
 An always-on personal agent that **buys your groceries from H‑E‑B** — you just talk to it.
-Message Claude on your phone *"order hot dogs for 8 people"* and it figures out the
-quantities, asks about buns and condiments, builds the cart at your store, and checks out —
+Open the app on your phone — *"order hot dogs for 8 people"* — and it figures out the
+quantities, asks about buns and condiments, builds the cart at your store, and checks out,
 paying with a prepaid card you set once. No app-tapping, no forms.
 
-It runs as **MCP servers** (Model Context Protocol), so it works with Claude on desktop and
-phone, and with any other MCP-capable assistant. Money safety is enforced in code, not by
-prompting.
+It runs two ways on one shared brain: a **self-hosted web app** (`make web`, add it to your
+phone's home screen) and as **MCP servers** (Model Context Protocol) — so it also works with
+Claude on desktop and phone, and any other MCP-capable assistant. Money safety is enforced in
+code, not by prompting.
 
 > **Status:** working and in real use for H‑E‑B curbside/scheduled delivery. On-demand
 > (Favor) is semi-automated. It's a personal, self-hosted project — not affiliated with
@@ -18,8 +19,8 @@ prompting.
 ## What's possible
 
 **Talk to it however's easiest:**
+- **A self-hosted web app** (the day-to-day way) — `make web` opens a chat UI you can add to your phone's home screen; pick Sonnet/Opus/Haiku per chat. Shares the *same* cart, spend limits, history, and remembered picks as every other path. See [docs/WEB-UI.md](docs/WEB-UI.md).
 - **Chat / voice with Claude** (desktop or phone) — *"add oat milk and eggs"*, *"order the usual"*.
-- **A self-hosted web app** — `make web` opens a local chat UI (pick Sonnet/Opus/Haiku per chat) that shares the *same* cart, spend limits, history, and remembered picks as the Claude path. See [docs/WEB-UI.md](docs/WEB-UI.md).
 - **Siri / Apple Reminders** — *"Hey Siri, add limes to my Groceries list"*; the agent reads it.
 - **Apple Notes, a shared Google Doc, Todoist, Notion, email, or a text file** — jot items anywhere; it merges them all.
 - **A weekly standing order** — re-orders your staples on a schedule, adjusting for what you added during the week.
@@ -60,9 +61,14 @@ Ordering groceries touches a real account and real money, so a few things must b
 5. **Your home store id** in `config/store.json` (the installer creates it from a template;
    ask the agent *"search HEB stores near <your address>"* to find your id).
 
-**Additional, only if you want to order from your phone:**
-6. **A Google OAuth app** (free, ~10 min) so the phone connector authenticates *you only*, and
-   **a Tailscale tunnel** to reach your Mac. (Phone connectors need a paid Claude plan.)
+**Additional, to use it from your phone (over a Tailscale tailnet):**
+6. Two ways to reach it on your phone:
+   - **The web app — simplest, and the day-to-day way to use it.** Open the `make web` UI from
+     your phone with a token — no Google OAuth, no paid Claude plan (it's billed per Anthropic
+     API token instead). Installs to your home screen as a standalone app.
+     See [docs/WEB-UI.md](docs/WEB-UI.md).
+   - **The Claude connector** — talk to Claude directly. Needs a **Google OAuth app**
+     (free, ~10 min) so it authenticates *you only*, and a paid Claude plan.
 
 **Additional, only for Favor on-demand (optional):**
 7. **A Favor account** (separate phone+SMS signup) and a one-time login. Remember: Favor
@@ -76,7 +82,7 @@ while you verify everything.
 ## Quick start
 
 ```sh
-git clone <this repo> grocery-agent && cd grocery-agent
+git clone https://github.com/menderle/grocery-agent.git && cd grocery-agent
 zsh scripts/install.sh        # Python (via uv), deps, Chromium, secrets, store template, selftest
 ```
 
