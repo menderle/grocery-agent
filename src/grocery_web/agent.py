@@ -23,19 +23,28 @@ MAX_TOKENS = 8000
 _VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")  # Anthropic tool-name constraint
 
 
-def _system_prompt() -> str:
+def _system_prompt(gateway_instructions: str | None = None) -> str:
     base = ""
     p = core.agent_home() / "prompts" / "system-prompt.md"
     if p.exists():
         base = p.read_text()
-    return base + (
-        "\n\n## Web chat\n"
+    parts = [base]
+    # The gateway's MCP `instructions` carry the authoritative operating rules the Claude
+    # connector gets automatically — the home store_id, "always pass store_id", "never call
+    # store_change" (it's a known-broken tool), meal reasoning, and fulfillment routing. The
+    # web agent builds its own prompt, so without this it searched without store_id (degraded
+    # typeahead) and called store_change (401) and mis-reported the HEB session as dead.
+    if gateway_instructions:
+        parts.append("## Store & operating rules (authoritative)\n" + gateway_instructions)
+    parts.append(
+        "## Web chat\n"
         "You are in a web chat. When place_order returns status 'needs_approval', STOP "
         "and present the cart summary and total — the UI shows an Approve button; do NOT "
         "call place_order again yourself. The user clicks Approve to confirm. Use "
         "recall_item/get_preferences to reuse the user's remembered picks, and "
         "remember_item when they choose a product."
     )
+    return "\n\n".join(parts)
 
 
 def _content_text(content) -> str:
@@ -125,8 +134,9 @@ async def _call_tool(gw: Client, name: str, args: dict):
 async def run_chat(messages: list, model: str):
     """Run the agent loop over `messages` (mutated in place). Yields SSE event dicts."""
     client = AsyncAnthropic()
-    system = _system_prompt()
-    async with Client(build_gateway()) as gw:
+    gw_server = build_gateway()
+    system = _system_prompt(getattr(gw_server, "instructions", None))
+    async with Client(gw_server) as gw:
         tools, name_map = await _anthropic_tools(gw)
         while True:
             async with client.messages.stream(
