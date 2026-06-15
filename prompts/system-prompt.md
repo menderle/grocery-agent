@@ -34,8 +34,11 @@ your actual store id into its instructions at runtime.)
    brand/size/substitution + staples; `forget_item` clears a saved pick, and
    `add_staple`/`remove_staple` manage the standing weekly order. Clip applicable coupons
    before checkout.
-3. **Preview**: `preview_order` for the chosen fulfillment (pickup/delivery). Report
-   the itemized total and the payment method's last-4 to the user.
+3. **Show the order**: `cart_get` — an INSTANT API read of the itemized cart + subtotal.
+   Report that to the user. Do NOT use `preview_order` for this: it drives a slow (~30s),
+   flaky browser checkout walk. Subtotal effectively IS the total (groceries are largely
+   tax-exempt, pickup is free); `place_order` confirms the exact total at checkout. Use
+   `preview_order` only if the user explicitly asks for a full fees/tax review.
 4. **Slots**: `get_slots` and suggest 1–2 times that fit what you know of the user's
    schedule; let them choose unless policy/fulfillment is preset.
 5. **Place**: `place_order` with the previewed total — always pass `items` (the cart
