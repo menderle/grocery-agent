@@ -174,6 +174,23 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .06s,background .15s}
   .send:active{transform:scale(.92)} .send svg{width:19px;height:19px}
   .send.stop{background:var(--text-2)}
+  .sheet[hidden]{display:none}
+  .sheet{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end}
+  .sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+  .sheet-panel{position:relative;background:var(--surface);border-radius:18px 18px 0 0;
+    padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:82%;overflow-y:auto;animation:slideup .22s ease}
+  @keyframes slideup{from{transform:translateY(100%)}to{transform:none}}
+  .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .sheet-head b{font-size:17px;font-weight:600}
+  .sfield{margin-bottom:14px}
+  .sfield label{display:block;font-size:12.5px;color:var(--text-2);margin-bottom:7px}
+  .sfield select{width:100%;appearance:none;-webkit-appearance:none;background:var(--surface-2);
+    border:1px solid var(--border);color:var(--text);font-size:15px;border-radius:11px;padding:12px 13px}
+  .slist{border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px}
+  .srow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 13px;font-size:14px;border-bottom:1px solid var(--border)}
+  .srow:last-child{border-bottom:0} .srow>span:first-child{color:var(--text-2)} .srow .val{display:inline-flex;align-items:center;gap:6px}
+  .sheet-btn{width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:11px;padding:13px;font-size:15px;font-weight:500;cursor:pointer}
+  .sheet-btn:active{transform:scale(.99)}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -186,13 +203,8 @@
     <div class="hrow">
       <div class="mark" id="mark" aria-hidden="true"></div>
       <div class="htitle"><b>Grocery agent</b><span id="store">connecting…</span></div>
-      <button class="iconbtn" id="newchat" aria-label="New conversation"></button>
-    </div>
-    <div class="hmeta">
       <span class="pill" id="b-dry">…</span>
-      <span class="pill" id="b-heb"><span class="dot" id="heb-dot"></span><span id="heb-txt">H-E-B</span></span>
-      <span class="pill" id="b-spend">7-day · —</span>
-      <span class="sel"><select id="model" aria-label="Model for this conversation"></select><span id="chev" aria-hidden="true"></span></span>
+      <button class="iconbtn" id="gear" aria-label="Settings"></button>
     </div>
   </header>
 
@@ -208,6 +220,23 @@
     </div>
   </footer>
   <div id="sr" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-bg" id="sheet-bg"></div>
+    <div class="sheet-panel">
+      <div class="sheet-head"><b>Settings</b><button class="iconbtn" id="sheet-close" aria-label="Close"></button></div>
+      <div class="sfield"><label for="model">Model for this conversation</label>
+        <select id="model" aria-label="Model for this conversation"></select></div>
+      <div class="slist">
+        <div class="srow"><span>Safety</span><span id="s-safety">—</span></div>
+        <div class="srow"><span>Autonomy</span><span id="s-mode">—</span></div>
+        <div class="srow"><span>H-E-B session</span><span class="val"><span class="dot" id="heb-dot"></span><span id="heb-txt">—</span></span></div>
+        <div class="srow"><span>Spent · last 7 days</span><span id="s-spend">—</span></div>
+        <div class="srow"><span>Store</span><span>Burnet Rd · 202</span></div>
+      </div>
+      <button class="sheet-btn" id="newchat">New conversation</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -218,6 +247,8 @@ const I={
   stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>',
   edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.05a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.05a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>',
   retry:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>',
   check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -229,7 +260,7 @@ const I={
   ban:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg>',
   flask:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6L5 18a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3"/><path d="M7.5 14h9"/></svg>'
 };
-$("#mark").innerHTML=I.leaf; $("#newchat").innerHTML=I.edit; $("#send").innerHTML=I.send; $("#chev").innerHTML=I.chev;
+$("#mark").innerHTML=I.leaf; $("#send").innerHTML=I.send; $("#gear").innerHTML=I.gear; $("#sheet-close").innerHTML=I.x;
 $("#jump").innerHTML=I.down+"Latest"; $("#livebar").innerHTML=I.alert+"LIVE · real charges will be made";
 
 (function(){const vv=window.visualViewport;if(!vv)return;
@@ -297,12 +328,14 @@ function setBusy(b){busy=b;const s=$("#send");if(b){s.innerHTML=I.stop;s.classLi
 async function refreshStatus(){
   try{const s=await(await fetch("/api/status",{cache:"no-store",headers:authHeaders()})).json();
     const dry=$("#b-dry");
-    if(s.dry_run===false){dry.className="pill live";dry.innerHTML=I.alert+"Live · real charges";document.body.classList.add("live-mode");}
-    else{dry.className="pill safe";dry.innerHTML=I.shield+"Dry-run · safe";document.body.classList.remove("live-mode");}
+    if(s.dry_run===false){dry.className="pill live";dry.innerHTML=I.alert+"LIVE";document.body.classList.add("live-mode");}
+    else{dry.className="pill safe";dry.innerHTML=I.shield+"Dry-run";document.body.classList.remove("live-mode");}
+    $("#s-safety").textContent=s.dry_run===false?"Live · real charges":"Dry-run · safe";
+    $("#s-mode").textContent=s.policy_mode||"—";
     $("#heb-dot").className="dot "+(s.heb_session_present?"on":"off");
-    $("#heb-txt").textContent=s.heb_session_present?"H-E-B connected":"H-E-B signed out";
-    $("#b-spend").textContent="7-day · $"+(s.spent_last_7_days??0);
-    if(s.policy_mode)$("#store").textContent="Burnet Rd · H-E-B · "+s.policy_mode;
+    $("#heb-txt").textContent=s.heb_session_present?"Connected":"Signed out";
+    $("#s-spend").textContent="$"+(s.spent_last_7_days??0);
+    $("#store").textContent="Burnet Rd · H-E-B";
   }catch(e){}
 }
 const TAG={sonnet:"fast",opus:"most capable",haiku:"cheapest"};
@@ -405,7 +438,10 @@ $("#input").addEventListener("input",autoGrow);
 $("#input").addEventListener("focus",()=>setTimeout(()=>scroll(true),300));  /* keep latest visible above keyboard */
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!busy)send();}});
 $("#send").onclick=()=>{if(busy){if(ac)ac.abort();}else send();};
-$("#newchat").onclick=()=>{if(busy&&ac)ac.abort();CID=newId();localStorage.setItem("gw_cid",CID);log.innerHTML="";renderEmpty();};
+const sheet=$("#sheet"), closeSheet=()=>{sheet.hidden=true;};
+$("#gear").onclick=()=>{sheet.hidden=false;};
+$("#sheet-close").onclick=closeSheet; $("#sheet-bg").onclick=closeSheet;
+$("#newchat").onclick=()=>{closeSheet();if(busy&&ac)ac.abort();CID=newId();localStorage.setItem("gw_cid",CID);log.innerHTML="";renderEmpty();};
 
 initConfig().then(refreshStatus).then(renderEmpty);
 setInterval(refreshStatus,30000);
