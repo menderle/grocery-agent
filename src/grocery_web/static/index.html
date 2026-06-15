@@ -47,14 +47,20 @@
   @media (min-width:780px){ .app{border-left:1px solid var(--border);border-right:1px solid var(--border)} }
 
   #livebar{display:none}
-  .live-mode #livebar{display:flex;align-items:center;justify-content:center;gap:6px;
+  .live-mode #livebar{display:flex;align-items:center;justify-content:center;gap:6px;overflow:hidden;
     background:var(--live-fg);color:#fff;font-size:11.5px;font-weight:600;letter-spacing:.03em;
     padding:5px 8px;padding-top:calc(5px + env(safe-area-inset-top))}
+  /* Dismiss = smooth collapse: height (pinned→0 in JS), opacity and padding animate in lockstep
+     with the header reclaiming the notch inset — no fade-then-snap. The transition lives on the
+     dismissed state so ONLY the dismiss animates; going live / going dry stay instant. */
+  .live-mode.bar-dismissed #livebar{height:0;opacity:0;padding-top:0;padding-bottom:0;
+    transition:height .4s ease,opacity .4s ease,padding .4s ease}
   .live-mode #livebar svg{width:14px;height:14px}
 
   header{flex:none;background:var(--surface);border-bottom:1px solid var(--border);
     padding:calc(8px + env(safe-area-inset-top)) 14px 9px}
   .live-mode header{padding-top:9px;border-bottom-color:var(--live-fg)}
+  .live-mode.bar-dismissed header{padding-top:calc(8px + env(safe-area-inset-top));transition:padding-top .4s ease}
   .hrow{display:flex;align-items:center;gap:10px}
   .mark{width:30px;height:30px;border-radius:9px;background:var(--accent);color:var(--on-accent);
     display:flex;align-items:center;justify-content:center;flex:none}
@@ -364,13 +370,35 @@ function authRequired(){
   log.appendChild(d);
   $("#send").disabled=true; $("#input").disabled=true; $("#input").placeholder="Locked — open with your token link";
 }
+let barTimer=null;
+/* The full-width LIVE banner is a brief reminder, not a permanent fixture — the red LIVE pill
+   stays as the standing signal. Collapse the banner ~6s after going live, or the moment the user
+   sends a message (whichever first). Fully synchronous — no orphan timeout that could outlive a
+   live→dry→live flip and suppress the next banner. Pin the current height, then animate
+   height/opacity/padding to 0 while the header reclaims the notch inset (see .bar-dismissed CSS). */
+function dismissBar(){
+  if(!document.body.classList.contains("live-mode")||document.body.classList.contains("bar-dismissed"))return;
+  clearTimeout(barTimer);
+  const lb=$("#livebar");
+  lb.style.height=lb.getBoundingClientRect().height+"px";  /* pin exact current height (instant — showing state has no transition) */
+  lb.offsetHeight;                         /* force reflow so the collapse animates from the pinned px */
+  document.body.classList.add("bar-dismissed");            /* now CSS targets height:0 (the inline pin still overrides) */
+  lb.style.height="";                      /* release the pin → animate to the CSS height:0; leaves no sticky inline height */
+}
 async function refreshStatus(){
   try{const res=await fetch("/api/status",{cache:"no-store",headers:authHeaders()});
     if(res.status===401){authRequired();return;}
     const s=await res.json();
     const dry=$("#b-dry");
-    if(s.dry_run===false){dry.className="pill live";dry.innerHTML=I.alert+"LIVE";document.body.classList.add("live-mode");}
-    else{dry.className="pill safe";dry.innerHTML=I.shield+"Dry-run";document.body.classList.remove("live-mode");}
+    if(s.dry_run===false){
+      dry.className="pill live";dry.innerHTML=I.alert+"LIVE";
+      if(!document.body.classList.contains("live-mode")){   /* just entered live this load — show banner, then collapse */
+        document.body.classList.add("live-mode");document.body.classList.remove("bar-dismissed");
+        $("#livebar").style.height="";   /* clear any pinned collapse height from a prior live session */
+        clearTimeout(barTimer);barTimer=setTimeout(dismissBar,6000);
+      }
+    }
+    else{dry.className="pill safe";dry.innerHTML=I.shield+"Dry-run";document.body.classList.remove("live-mode","bar-dismissed");$("#livebar").style.height="";clearTimeout(barTimer);}
     $("#s-safety").textContent=s.dry_run===false?"Live · real charges":"Dry-run · safe";
     $("#s-mode").textContent=s.policy_mode||"—";
     $("#heb-dot").className="dot "+(s.heb_session_present?"on":"off");
@@ -470,6 +498,7 @@ function endStream(){hideTyping();settleChips();if(rafId){cancelAnimationFrame(r
 
 async function send(text){
   const t=(text!=null?text:$("#input").value).trim();if(!t||busy)return;
+  dismissBar();   /* sending is the "event" that retires the LIVE banner early */
   const em=log.querySelector(".empty");if(em)em.remove();clearSuggest();
   lastUserText=t;$("#input").value="";autoGrow();addUser(t);curBubble=null;curRaw="";setBusy(true);showTyping();
   ac=new AbortController();
