@@ -177,10 +177,11 @@ async def api_approve(request):
 # ---------- token auth (pure ASGI so it never buffers the SSE stream) ----------
 
 class TokenAuth:
-    """If WEB_AUTH_TOKEN is set, require it on every request (Bearer header or ?token=).
-    /health stays open. With no token set (local default) everything is open."""
-
-    OPEN = ("/health",)
+    """If WEB_AUTH_TOKEN is set, require it on the API (data + actions) only. The static
+    shell (/, /static, /health) loads WITHOUT a token — it holds no secrets — so that after
+    one visit with ?token=… (which the page saves to localStorage) a later visit to the bare
+    URL still works: a browser can't attach the token to a document navigation, but the
+    page's own /api/* fetches carry it via the Authorization header. No token set → all open."""
 
     def __init__(self, app, token: str):
         self.app = app
@@ -190,7 +191,7 @@ class TokenAuth:
         if scope["type"] != "http" or not self.token:
             return await self.app(scope, receive, send)
         path = scope.get("path", "")
-        if path in self.OPEN:
+        if not path.startswith("/api/"):  # shell/static/health public; only the API is gated
             return await self.app(scope, receive, send)
         headers = dict(scope.get("headers") or [])
         sent = headers.get(b"authorization", b"").decode()

@@ -100,6 +100,13 @@ sed "s|__HOME__|$(pwd)|g" deploy/launchd/com.grocery-agent.web.plist \
 launchctl load ~/Library/LaunchAgents/com.grocery-agent.web.plist   # logs: /tmp/grocery-web.log
 ```
 
+## Add to home screen (installable app)
+
+The web UI ships a web manifest + slate app icons, so it installs as a standalone app:
+on iPhone Safari open the URL → Share → **Add to Home Screen**. It then launches full-screen
+(no browser chrome), follows system light/dark, and shows the app icon. The UI is mobile-first
+— safe-area aware, keyboard-aware (`visualViewport`), and responsive from small phones to desktop.
+
 ## Config reference (`.env`)
 
 | Var | Default | Purpose |

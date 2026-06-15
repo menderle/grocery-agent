@@ -2,242 +2,374 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Grocery Agent</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Grocery agent</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Grocery">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)">
 <style>
   :root{
-    --bg:#0f1411; --panel:#161d18; --edge:#2a3530; --ink:#e8efe9; --muted:#8aa093;
-    --accent:#3fa66a; --accent-ink:#06120b; --user:#1f2a24; --chip:#1b2620;
-    --warn:#caa23a; --bad:#d2603f; --good:#3fa66a; --blue:#4f8fd0;
+    --bg:#f5f6f8; --surface:#ffffff; --surface-2:#eef0f3; --surface-3:#e6e9ed;
+    --border:rgba(15,18,22,.10); --border-2:rgba(15,18,22,.16);
+    --text:#16191d; --text-2:#5a626d; --text-3:#878e99;
+    --accent:#4f46e5; --accent-press:#4038c9; --on-accent:#ffffff;
+    --safe-fg:#15803d; --safe-bg:#dcfce7; --live-fg:#b91c1c; --live-bg:#fee2e2;
+    --warn-fg:#a16207; --warn-bg:#fef3c7; --info-fg:#1d4ed8; --info-bg:#dbeafe;
+    --shadow:0 1px 2px rgba(15,18,22,.06), 0 8px 24px rgba(15,18,22,.06);
+    --r-sm:8px; --r-md:12px; --r-lg:18px; --r-xl:24px;
+    --maxw:760px;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0b0c0e; --surface:#151719; --surface-2:#1d2024; --surface-3:#24282d;
+      --border:rgba(255,255,255,.09); --border-2:rgba(255,255,255,.16);
+      --text:#e9ebee; --text-2:#9aa1ac; --text-3:#6c727c;
+      --accent:#7c83ff; --accent-press:#9aa0ff; --on-accent:#0b0c12;
+      --safe-fg:#86efac; --safe-bg:rgba(34,197,94,.16); --live-fg:#fca5a5; --live-bg:rgba(239,68,68,.18);
+      --warn-fg:#fcd34d; --warn-bg:rgba(245,158,11,.16); --info-fg:#93c5fd; --info-bg:rgba(59,130,246,.18);
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.45);
+    }
   }
   *{box-sizing:border-box}
-  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg);color:var(--ink);height:100vh;display:flex;flex-direction:column}
-  header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--edge);
-    background:var(--panel);flex-wrap:wrap}
-  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
-  header h1 .leaf{color:var(--accent)}
-  .badges{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto}
-  .badge{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--edge);
-    color:var(--muted);white-space:nowrap}
-  .badge.safe{color:var(--accent-ink);background:var(--good);border-color:var(--good);font-weight:600}
-  .badge.live{color:#fff;background:var(--bad);border-color:var(--bad);font-weight:600}
-  .badge.heb-out{color:#fff;background:var(--bad);border-color:var(--bad);font-weight:600}
-  .badge.heb-in{color:var(--good);border-color:var(--good)}
-  select,button{font:inherit}
-  select{background:var(--chip);color:var(--ink);border:1px solid var(--edge);border-radius:8px;padding:5px 8px}
-  .ghost{background:transparent;color:var(--muted);border:1px solid var(--edge);border-radius:8px;
-    padding:5px 10px;cursor:pointer}
-  .ghost:hover{color:var(--ink)}
-  #log{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:12px}
-  .row{display:flex}
-  .row.me{justify-content:flex-end}
-  .bubble{max-width:760px;padding:10px 14px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
-  .me .bubble{background:var(--user);border:1px solid var(--edge)}
-  .ai .bubble{background:var(--panel);border:1px solid var(--edge)}
-  .chip{align-self:flex-start;font-size:12px;color:var(--muted);background:var(--chip);
-    border:1px solid var(--edge);border-radius:999px;padding:3px 10px}
-  .chip code{color:var(--ink)}
-  .card{align-self:flex-start;max-width:760px;border:1px solid var(--edge);border-radius:14px;
-    background:var(--panel);padding:14px;display:flex;flex-direction:column;gap:10px}
-  .card.approve{border-color:var(--warn)}
-  .card .t{font-weight:600}
-  .card .sub{color:var(--muted);font-size:13px}
-  .card ul.items{margin:2px 0;padding-left:18px;font-size:14px}
-  .card ul.items li{margin:1px 0}
-  .card .total{font-weight:600;font-size:15px}
-  .approve button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:9px;
-    padding:9px 16px;font-weight:700;cursor:pointer;align-self:flex-start}
-  .approve button:disabled{opacity:.6;cursor:default}
-  .banner{align-self:flex-start;max-width:760px;border-radius:12px;padding:11px 14px;font-size:14px;border:1px solid}
-  .banner.good{border-color:var(--good);background:rgba(63,166,106,.12)}
-  .banner.blue{border-color:var(--blue);background:rgba(79,143,208,.12)}
-  .banner.warn{border-color:var(--warn);background:rgba(202,162,58,.12)}
-  .banner.bad{border-color:var(--bad);background:rgba(210,96,63,.14)}
-  footer{padding:12px 16px;border-top:1px solid var(--edge);background:var(--panel)}
-  .composer{display:flex;gap:10px;max-width:980px;margin:0 auto}
-  textarea{flex:1;resize:none;background:var(--chip);color:var(--ink);border:1px solid var(--edge);
-    border-radius:12px;padding:11px 13px;min-height:46px;max-height:160px}
-  .send{background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:0 20px;
-    font-weight:700;cursor:pointer}
-  .send:disabled{opacity:.5;cursor:default}
-  .hint{color:var(--muted);font-size:12px;text-align:center;margin-top:6px}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overscroll-behavior:none}
+  button,select,textarea,input{font:inherit;color:inherit}
+  .app{display:flex;flex-direction:column;height:100dvh;height:var(--app-h,100dvh);
+    max-width:var(--maxw);margin:0 auto;background:var(--bg);position:relative}
+  @media (min-width:780px){ .app{border-left:1px solid var(--border);border-right:1px solid var(--border)} }
+
+  /* header */
+  header{flex:none;background:var(--surface);border-bottom:1px solid var(--border);
+    padding:calc(8px + env(safe-area-inset-top)) 14px 9px}
+  .hrow{display:flex;align-items:center;gap:10px}
+  .mark{width:30px;height:30px;border-radius:9px;background:var(--accent);color:var(--on-accent);
+    display:flex;align-items:center;justify-content:center;flex:none}
+  .mark svg{width:18px;height:18px}
+  .htitle{flex:1;min-width:0}
+  .htitle b{font-size:15px;font-weight:600;letter-spacing:-.01em;display:block;line-height:1.15}
+  .htitle span{font-size:11.5px;color:var(--text-3);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .iconbtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:transparent;
+    color:var(--text-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+  .iconbtn:hover{background:var(--surface-2);color:var(--text)}
+  .iconbtn:active{transform:scale(.94)}
+  .iconbtn svg{width:18px;height:18px}
+  .hmeta{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;
+    padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-2);white-space:nowrap}
+  .pill svg{width:13px;height:13px}
+  .pill.safe{background:var(--safe-bg);color:var(--safe-fg)}
+  .pill.live{background:var(--live-bg);color:var(--live-fg)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
+  .dot.on{background:#22c55e} .dot.off{background:#ef4444}
+  .sel{margin-left:auto;position:relative;display:inline-flex;align-items:center}
+  select#model{appearance:none;-webkit-appearance:none;background:var(--surface-2);border:1px solid var(--border);
+    color:var(--text-2);font-size:11.5px;font-weight:500;border-radius:999px;padding:4px 24px 4px 11px;cursor:pointer}
+  .sel svg{position:absolute;right:7px;width:13px;height:13px;color:var(--text-3);pointer-events:none}
+
+  /* log */
+  #log{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 14px 6px;
+    display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+  .turn{display:flex;flex-direction:column;gap:5px;animation:rise .22s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .turn.me{align-items:flex-end}
+  .bubble{max-width:84%;padding:9px 13px;border-radius:16px;font-size:14.5px;line-height:1.5;
+    word-wrap:break-word;overflow-wrap:anywhere}
+  .me .bubble{background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px}
+  .ai .bubble{background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:5px}
+  .ai .bubble p{margin:0 0 7px} .ai .bubble p:last-child{margin:0}
+  .ai .bubble ul{margin:5px 0;padding-left:19px} .ai .bubble li{margin:2px 0}
+  .ai .bubble code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .ai .bubble strong{font-weight:600}
+  .chip{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12px;
+    color:var(--text-2);background:var(--surface-2);padding:4px 11px;border-radius:999px}
+  .chip svg{width:13px;height:13px;color:var(--accent)}
+  .spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+  .typing{align-self:flex-start;display:inline-flex;gap:4px;background:var(--surface);border:1px solid var(--border);
+    padding:11px 14px;border-radius:16px;border-bottom-left-radius:5px}
+  .typing i{width:6px;height:6px;border-radius:50%;background:var(--text-3);animation:bounce 1.3s infinite}
+  .typing i:nth-child(2){animation-delay:.18s}.typing i:nth-child(3){animation-delay:.36s}
+  @keyframes bounce{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+
+  /* approval card */
+  .card{align-self:stretch;background:var(--surface);border:1.5px solid var(--accent);
+    border-radius:var(--r-lg);padding:15px;box-shadow:var(--shadow);animation:rise .22s ease both}
+  .card .ch{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px}
+  .card .ch b{font-size:15px;font-weight:600}
+  .card .exp{font-size:11.5px;color:var(--text-3);display:inline-flex;align-items:center;gap:4px}
+  .card .exp svg{width:13px;height:13px}
+  .li{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:3px 0}
+  .li .q{color:var(--text-3);margin-right:6px}
+  .li .pr{color:var(--text-2);white-space:nowrap}
+  .ctot{display:flex;justify-content:space-between;align-items:baseline;margin:12px 0;
+    padding-top:11px;border-top:1px solid var(--border)}
+  .ctot .ful{font-size:12.5px;color:var(--text-2);display:inline-flex;align-items:center;gap:5px}
+  .ctot .ful svg{width:14px;height:14px}
+  .ctot .amt{font-size:23px;font-weight:600;letter-spacing:-.02em}
+  .cact{display:flex;gap:9px}
+  .btn{flex:1;border:0;border-radius:var(--r-md);padding:12px;font-size:14.5px;font-weight:600;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:7px;transition:transform .06s,background .15s}
+  .btn svg{width:16px;height:16px}
+  .btn.primary{background:var(--accent);color:var(--on-accent)}
+  .btn.primary:active{transform:scale(.985);background:var(--accent-press)}
+  .btn.primary:disabled{opacity:.55;cursor:default}
+  .btn.ghost{flex:none;background:transparent;color:var(--text-2);border:1px solid var(--border-2);font-weight:500;padding:12px 16px}
+
+  /* outcome cards */
+  .out{align-self:stretch;display:flex;gap:11px;align-items:flex-start;border-radius:var(--r-md);
+    padding:12px 14px;font-size:13.5px;line-height:1.45;animation:rise .22s ease both}
+  .out svg{width:18px;height:18px;flex:none;margin-top:1px}
+  .out.good{background:var(--safe-bg);color:var(--safe-fg)}
+  .out.info{background:var(--info-bg);color:var(--info-fg)}
+  .out.warn{background:var(--warn-bg);color:var(--warn-fg)}
+  .out.bad{background:var(--live-bg);color:var(--live-fg)}
+  .out b{font-weight:600}
+
+  /* empty state */
+  .empty{margin:auto;text-align:center;max-width:340px;padding:24px 8px;animation:rise .3s ease both}
+  .empty .em-mark{width:52px;height:52px;border-radius:15px;background:var(--accent);color:var(--on-accent);
+    display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+  .empty .em-mark svg{width:28px;height:28px}
+  .empty h2{font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 6px}
+  .empty p{font-size:13.5px;color:var(--text-2);margin:0 0 18px;line-height:1.5}
+
+  /* composer */
+  footer{flex:none;background:var(--surface);border-top:1px solid var(--border);
+    padding:9px 12px calc(9px + env(safe-area-inset-bottom))}
+  .suggest{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:9px;margin:0 -2px}
+  .suggest::-webkit-scrollbar{display:none}
+  .sg{flex:none;font-size:12.5px;padding:6px 13px;border-radius:999px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text-2);cursor:pointer;white-space:nowrap;transition:background .15s}
+  .sg:hover{background:var(--surface-2);color:var(--text)} .sg:active{transform:scale(.97)}
+  .composer{display:flex;align-items:flex-end;gap:9px;background:var(--surface-2);
+    border:1px solid var(--border);border-radius:23px;padding:6px 6px 6px 15px;transition:border-color .15s}
+  .composer:focus-within{border-color:var(--accent)}
+  #input{flex:1;border:0;background:transparent;resize:none;outline:none;font-size:15px;line-height:1.4;
+    padding:7px 0;max-height:140px;min-height:22px}
+  #input::placeholder{color:var(--text-3)}
+  .send{width:36px;height:36px;flex:none;border:0;border-radius:50%;background:var(--accent);color:var(--on-accent);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .06s,opacity .15s}
+  .send:active{transform:scale(.92)} .send:disabled{opacity:.4;cursor:default}
+  .send svg{width:19px;height:19px}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
-<header>
-  <h1><span class="leaf">●</span> Grocery Agent</h1>
-  <div class="badges">
-    <span class="badge" id="b-dry">…</span>
-    <span class="badge" id="b-heb">HEB …</span>
-    <span class="badge" id="b-mode">policy …</span>
-    <span class="badge" id="b-spend">7-day …</span>
-    <select id="model" aria-label="Model for this conversation" title="Model for this conversation"></select>
-    <button class="ghost" id="newchat">New chat</button>
-  </div>
-</header>
+<div class="app">
+  <header>
+    <div class="hrow">
+      <div class="mark" id="mark" aria-hidden="true"></div>
+      <div class="htitle"><b>Grocery agent</b><span id="store">connecting…</span></div>
+      <button class="iconbtn" id="newchat" aria-label="New conversation"></button>
+    </div>
+    <div class="hmeta">
+      <span class="pill" id="b-dry">…</span>
+      <span class="pill" id="b-heb"><span class="dot" id="heb-dot"></span><span id="heb-txt">H-E-B</span></span>
+      <span class="pill" id="b-spend">7-day · —</span>
+      <span class="sel"><select id="model" aria-label="Model for this conversation"></select><span id="chev" aria-hidden="true"></span></span>
+    </div>
+  </header>
 
-<div id="log" aria-live="polite"></div>
+  <main id="log" aria-live="polite"></main>
 
-<footer>
-  <div class="composer">
-    <textarea id="input" aria-label="Message the grocery agent"
-      placeholder="e.g. order hot dogs for 8 people, pickup Saturday — or: add my usual water"></textarea>
-    <button class="send" id="send">Send</button>
-  </div>
-  <div class="hint" id="hint">Shares spend limits, history, cart &amp; memory with your Claude connector. Orders need a click to approve.</div>
-</footer>
+  <footer>
+    <div class="suggest" id="suggest"></div>
+    <div class="composer">
+      <textarea id="input" rows="1" aria-label="Message the grocery agent" enterkeyhint="send"
+        placeholder="Message your grocery agent…"></textarea>
+      <button class="send" id="send" aria-label="Send"></button>
+    </div>
+  </footer>
+</div>
 
 <script>
-const $ = s => document.querySelector(s);
-const log = $("#log");
+const $=s=>document.querySelector(s), log=$("#log");
 
-// token (only needed if WEB_AUTH_TOKEN is set + reached over Tailscale). Read it once,
-// then STRIP it from the URL so it doesn't linger in history / referer / shared links.
-const urlTok = new URLSearchParams(location.search).get("token");
-if (urlTok) { localStorage.setItem("gw_token", urlTok); history.replaceState({}, "", location.pathname); }
-const TOKEN = localStorage.getItem("gw_token") || "";
-function authHeaders(extra={}) { return TOKEN ? {...extra, "Authorization":"Bearer "+TOKEN} : extra; }
+const I={
+  leaf:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg>',
+  send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  cart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.6L21.5 7H6"/></svg>',
+  spark:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>',
+  loader:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9" opacity=".9"/></svg>',
+  alert:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.6 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  ban:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg>',
+  flask:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6L5 18a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3"/><path d="M7.5 14h9"/></svg>'
+};
+$("#mark").innerHTML=I.leaf; $("#newchat").innerHTML=I.edit; $("#send").innerHTML=I.send; $("#chev").innerHTML=I.chev;
 
-// stable conversation id per browser (so reloads continue the same thread + memory)
-let CID = localStorage.getItem("gw_cid");
-if (!CID) { CID = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replace(/[^a-z0-9-]/gi,"").slice(0,16); localStorage.setItem("gw_cid", CID); }
-let MODEL = null;
+/* keyboard-aware height (the iOS resize fix) */
+(function(){const vv=window.visualViewport;if(!vv)return;
+  const fit=()=>document.documentElement.style.setProperty('--app-h',vv.height+'px');
+  vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit);fit();})();
 
-function el(cls, html){ const d=document.createElement("div"); d.className=cls; if(html!==undefined) d.innerHTML=html; return d; }
-function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
-function scroll(){ log.scrollTop = log.scrollHeight; }
-function addUser(t){ const r=el("row me"); r.appendChild(el("bubble", esc(t))); log.appendChild(r); scroll(); }
-function newAIBubble(){ const r=el("row ai"); const b=el("bubble",""); r.appendChild(b); log.appendChild(r); scroll(); return b; }
-function addChip(name){ const c=el("chip", "⚙︎ <code>"+esc(name)+"</code>"); log.appendChild(c); scroll(); }
-function addBanner(kind, html){ const b=el("banner "+kind, html); log.appendChild(b); scroll(); }
-function relExpiry(iso){
-  try { const ms = new Date(iso) - new Date(); if(isNaN(ms)) return esc(iso);
-    if(ms<=0) return "expired"; const h=Math.floor(ms/3.6e6), m=Math.round((ms%3.6e6)/6e4);
-    return "expires in " + (h?h+"h "+m+"m":m+"m"); } catch(e){ return esc(iso); }
+/* token: read ?token once, store, strip from URL */
+const urlTok=new URLSearchParams(location.search).get("token");
+if(urlTok){localStorage.setItem("gw_token",urlTok);history.replaceState({},"",location.pathname);}
+const TOKEN=localStorage.getItem("gw_token")||"";
+const authHeaders=(x={})=>TOKEN?{...x,"Authorization":"Bearer "+TOKEN}:x;
+const newId=()=>(crypto.randomUUID?crypto.randomUUID():String(Date.now())).replace(/[^a-z0-9-]/gi,"").slice(0,16);
+let CID=localStorage.getItem("gw_cid")||(localStorage.setItem("gw_cid",newId()),localStorage.getItem("gw_cid"));
+let MODEL=null;
+
+const esc=s=>(s==null?"":String(s)).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function md(t){ /* escape FIRST, then whitelist a little markdown */
+  const lines=esc(t).split("\n");let html="",ul=false;
+  const inline=s=>s.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>").replace(/(^|[\s(])\*(?!\s)(.+?)\*/g,"$1<em>$2</em>").replace(/`([^`]+?)`/g,"<code>$1</code>");
+  for(let ln of lines){
+    if(/^\s*[-*]\s+/.test(ln)){ if(!ul){html+="<ul>";ul=true;} html+="<li>"+inline(ln.replace(/^\s*[-*]\s+/,""))+"</li>"; }
+    else{ if(ul){html+="</ul>";ul=false;} if(ln.trim()==="")continue; html+="<p>"+inline(ln)+"</p>"; }
+  }
+  if(ul)html+="</ul>"; return html||"<p></p>";
 }
+const TOOLN={product_search:"Searching products",product_search_batch:"Searching products",product_get:"Checking a product",
+  cart_add:"Adding to cart",cart_add_many:"Adding to cart",cart_add_with_retry:"Adding to cart",cart_get:"Reviewing cart",cart_remove:"Updating cart",
+  coupon_list:"Checking coupons",coupon_search:"Checking coupons",coupon_clip:"Clipping coupons",coupon_clipped:"Checking coupons",
+  get_slots:"Checking pickup times",preview_order:"Previewing the order",place_order:"Placing the order",order_history:"Looking at past orders",
+  get_policy:"Checking your limits",read_grocery_lists:"Reading your lists",suggest_replenishment:"Checking what's low",get_upcoming_events:"Checking your calendar",
+  recall_item:"Recalling your usual",remember_item:"Saving your pick",get_preferences:"Loading preferences",list_payment_methods:"Checking payment",store_search:"Finding stores"};
+const toolLabel=n=>TOOLN[n]||String(n).replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
 
-let busy=false;
-let activeApprove=null;  // the Approve button currently mid-placement, if any
-function setBusy(b){ busy=b; $("#send").disabled=b; $("#input").disabled=b; }
+function elc(cls,html){const d=document.createElement("div");d.className=cls;if(html!=null)d.innerHTML=html;log.appendChild(d);scroll();return d;}
+function scroll(){log.scrollTop=log.scrollHeight;}
+function addUser(t){const r=document.createElement("div");r.className="turn me";const b=document.createElement("div");b.className="bubble";b.textContent=t;r.appendChild(b);log.appendChild(r);scroll();}
+function newAI(){const r=document.createElement("div");r.className="turn ai";const b=document.createElement("div");b.className="bubble";r.appendChild(b);log.appendChild(r);scroll();return b;}
+function addChip(name){return elc("chip",'<span class="spin">'+I.loader+'</span>'+esc(toolLabel(name)));}
 
+let typingEl=null;
+function showTyping(){if(typingEl)return;typingEl=elc("typing","<i></i><i></i><i></i>");}
+function hideTyping(){if(typingEl){typingEl.remove();typingEl=null;}}
+
+let busy=false,activeApprove=null;
+function setBusy(b){busy=b;$("#send").disabled=b;}
+
+/* ---- status + config ---- */
 async function refreshStatus(){
-  try{
-    const s = await (await fetch("/api/status", {headers:authHeaders()})).json();
+  try{const s=await(await fetch("/api/status",{headers:authHeaders()})).json();
     const dry=$("#b-dry");
-    if(s.dry_run){ dry.textContent="DRY-RUN (safe)"; dry.className="badge safe"; }
-    else { dry.textContent="LIVE — real charges"; dry.className="badge live"; }
-    const heb=$("#b-heb");
-    if(s.heb_session_present){ heb.textContent="HEB: signed in"; heb.className="badge heb-in"; }
-    else { heb.textContent="HEB: signed out"; heb.className="badge heb-out"; }
-    $("#b-mode").textContent = "policy: "+(s.policy_mode||"?");
-    $("#b-spend").textContent = "7-day $"+(s.spent_last_7_days??0);
-  }catch(e){ /* status is best-effort */ }
+    if(s.dry_run){dry.className="pill safe";dry.innerHTML=I.shield+"Dry-run · safe";}
+    else{dry.className="pill live";dry.innerHTML=I.alert+"Live · real charges";}
+    $("#heb-dot").className="dot "+(s.heb_session_present?"on":"off");
+    $("#heb-txt").textContent=s.heb_session_present?"H-E-B connected":"H-E-B signed out";
+    $("#b-spend").textContent="7-day · $"+(s.spent_last_7_days??0);
+    if(s.policy_mode)$("#store").textContent="Burnet Rd · H-E-B · "+s.policy_mode;
+  }catch(e){}
 }
-
 async function initConfig(){
-  try{
-    const c = await (await fetch("/api/config", {headers:authHeaders()})).json();
-    const sel=$("#model"); sel.innerHTML="";
-    (c.models||[]).forEach(m=>{ const o=document.createElement("option"); o.value=m.alias; o.textContent=m.label; sel.appendChild(o); });
-    MODEL = c.default_model; sel.value = MODEL;
-    sel.onchange = ()=>{ MODEL = sel.value; };
-  }catch(e){ addBanner("bad", "⚠ Couldn't load config (is the server running?). "+esc(e.message||e)); }
+  try{const c=await(await fetch("/api/config",{headers:authHeaders()})).json();
+    const sel=$("#model");sel.innerHTML="";
+    (c.models||[]).forEach(m=>{const o=document.createElement("option");o.value=m.alias;
+      o.textContent=m.alias.charAt(0).toUpperCase()+m.alias.slice(1);o.title=m.label||m.alias;sel.appendChild(o);});
+    MODEL=c.default_model;sel.value=MODEL;sel.onchange=()=>MODEL=sel.value;
+  }catch(e){ renderEmpty(); }
 }
 
-// minimal SSE-over-fetch reader, with transport-error surfacing
-async function streamSSE(url, body, on){
+/* ---- SSE ---- */
+async function streamSSE(url,body,on){
   let res;
-  try{
-    res = await fetch(url, {method:"POST", headers:authHeaders({"Content-Type":"application/json"}), body:JSON.stringify(body)});
-  }catch(e){ on("error", {message:"Couldn't reach the server. "+(e.message||e)}); return; }
-  if(!res.ok){ on("error", {message:"HTTP "+res.status}); return; }
-  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf="";
-  try{
-    while(true){
-      const {value, done} = await reader.read(); if(done) break;
-      buf += dec.decode(value, {stream:true});
-      let i;
-      while((i = buf.indexOf("\n\n")) >= 0){
-        const frame = buf.slice(0, i); buf = buf.slice(i+2);
-        let ev="message", data="";
-        frame.split("\n").forEach(line=>{
-          if(line.startsWith("event:")) ev=line.slice(6).trim();
-          else if(line.startsWith("data:")) data += line.slice(5).trim();
-        });
-        if(data){ try{ on(ev, JSON.parse(data)); }catch(e){ on(ev, {raw:data}); } }
-      }
-    }
-  }catch(e){ on("error", {message:"Connection lost — please resend. "+(e.message||e)}); }
+  try{res=await fetch(url,{method:"POST",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify(body)});}
+  catch(e){on("error",{message:"Couldn't reach the server."});return;}
+  if(!res.ok){on("error",{message:"Server error ("+res.status+")."});return;}
+  const rd=res.body.getReader(),dec=new TextDecoder();let buf="";
+  try{while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
+    let i;while((i=buf.indexOf("\n\n"))>=0){const fr=buf.slice(0,i);buf=buf.slice(i+2);
+      let ev="message",data="";fr.split("\n").forEach(l=>{if(l.startsWith("event:"))ev=l.slice(6).trim();else if(l.startsWith("data:"))data+=l.slice(5).trim();});
+      if(data){try{on(ev,JSON.parse(data));}catch(e){on(ev,{raw:data});}}}}
+  }catch(e){on("error",{message:"Connection lost — please resend."});}
 }
-
-function makeHandlers(){
-  let bubble=null;
-  return (ev, d)=>{
-    if(ev==="assistant_delta"){ if(!bubble) bubble=newAIBubble(); bubble.textContent += d.text; scroll(); }
-    else if(ev==="assistant_done"){ bubble=null; }
-    else if(ev==="tool_call"){ addChip(d.name); }
-    else if(ev==="needs_approval"){ renderApprove(d); }
-    else if(ev==="order_outcome"){ renderOutcome(d); finalizeApprove(d); }
-    else if(ev==="error"){ addBanner("bad", "⚠ "+esc(d.message||"error")); resetApprove(); setBusy(false); }
-    else if(ev==="turn_end"){ setBusy(false); refreshStatus(); }
+function makeHandlers(){let bubble=null,raw="";
+  return (ev,d)=>{
+    if(ev==="assistant_delta"){hideTyping();if(!bubble){bubble=newAI();raw="";}raw+=d.text;bubble.innerHTML=md(raw);scroll();}
+    else if(ev==="assistant_done"){bubble=null;raw="";}
+    else if(ev==="tool_call"){addChip(d.name);}
+    else if(ev==="needs_approval"){hideTyping();renderApprove(d);}
+    else if(ev==="order_outcome"){renderOutcome(d);finalizeApprove(d);}
+    else if(ev==="error"){hideTyping();renderOutcome({status:"error",reason:d.message});resetApprove();setBusy(false);}
+    else if(ev==="turn_end"){hideTyping();setBusy(false);refreshStatus();}
   };
 }
 
+/* ---- approval + outcomes ---- */
+function relExpiry(iso){try{const ms=new Date(iso)-new Date();if(isNaN(ms))return"";if(ms<=0)return"expired";
+  const h=Math.floor(ms/3.6e6),m=Math.round(ms%3.6e6/6e4);return"expires in "+(h?h+"h "+m+"m":m+"m");}catch(e){return"";}}
+function money(v){return v==null?"":"$"+Number(v).toFixed(2);}
 function renderApprove(d){
-  const card = el("card approve");
-  card.appendChild(el("t","Approve this order before it's placed"));
-  if(d.order_total!=null) card.appendChild(el("total","Total: $"+esc(d.order_total)));
-  if(Array.isArray(d.items) && d.items.length){
-    const ul=document.createElement("ul"); ul.className="items";
-    d.items.forEach(it=>{ const name=(it&&it.name)||it; const q=it&&it.quantity; const li=document.createElement("li");
-      li.textContent = (q?q+"× ":"")+String(name); ul.appendChild(li); });
-    card.appendChild(ul);
-  }
-  const meta=[d.fulfillment, d.slot_text].filter(Boolean).join(" · ");
-  if(meta) card.appendChild(el("sub", esc(meta)));
-  if(d.reason) card.appendChild(el("sub", esc(d.reason)));
-  if(d.expires_at) card.appendChild(el("sub", relExpiry(d.expires_at)));
-  const btn=document.createElement("button"); btn.textContent="Approve & place order";
-  btn.onclick = ()=>{ if(busy) return; btn.disabled=true; btn.textContent="Placing…"; activeApprove=btn; approve(d.approval_id); };
-  card.appendChild(btn); log.appendChild(card); scroll();
+  const card=document.createElement("div");card.className="card";
+  let lis="";
+  (Array.isArray(d.items)?d.items:[]).forEach(it=>{const n=(it&&it.name)||it,q=it&&it.quantity;
+    lis+='<div class="li"><span>'+(q?'<span class="q">'+esc(q)+'×</span>':'')+esc(n)+'</span></div>';});
+  const ful=[d.fulfillment,d.slot_text].filter(Boolean).join(" · ");
+  card.innerHTML='<div class="ch"><b>Review your order</b>'+(d.expires_at?'<span class="exp">'+I.clock+'<span data-exp="'+esc(d.expires_at)+'">'+esc(relExpiry(d.expires_at))+'</span></span>':'')+'</div>'+
+    lis+
+    '<div class="ctot"><span class="ful">'+I.cart+esc(ful||"Curbside")+'</span><span class="amt">'+money(d.order_total)+'</span></div>'+
+    (d.reason?'<div class="exp" style="margin:-4px 0 10px">'+esc(d.reason)+'</div>':'')+
+    '<div class="cact"><button class="btn primary">'+I.check+'Approve &amp; place</button><button class="btn ghost">Not now</button></div>';
+  const [ok,no]=card.querySelectorAll("button");
+  ok.onclick=()=>{if(busy)return;ok.disabled=true;ok.innerHTML=I.loader.replace('<svg','<svg class="spin"')+'Placing…';activeApprove=ok;approve(d.approval_id);};
+  no.onclick=()=>{card.style.opacity=".5";ok.disabled=true;no.disabled=true;};
+  log.appendChild(card);scroll();
 }
-function finalizeApprove(d){
-  if(!activeApprove) return;
-  const labels={placed:"✓ Order placed", placed_unconfirmed:"✓ Submitted (verify in HEB)",
-    dry_run:"Rehearsed (dry-run)", blocked:"Blocked by policy", aborted:"Aborted", duplicate_skipped:"Already placed"};
-  activeApprove.textContent = labels[d.status] || "Done"; activeApprove.disabled=true; activeApprove=null;
-}
-function resetApprove(){ if(activeApprove){ activeApprove.disabled=false; activeApprove.textContent="Approve & place order"; activeApprove=null; } }
-
+function finalizeApprove(d){if(!activeApprove)return;
+  const t={placed:"Order placed",placed_unconfirmed:"Submitted",dry_run:"Rehearsed (dry-run)",blocked:"Blocked",aborted:"Aborted",duplicate_skipped:"Already placed"};
+  activeApprove.innerHTML=(d.status==="placed"||d.status==="dry_run"?I.check:'')+(t[d.status]||"Done");activeApprove.disabled=true;activeApprove=null;}
+function resetApprove(){if(activeApprove){activeApprove.disabled=false;activeApprove.innerHTML=I.check+"Approve &amp; place";activeApprove=null;}}
 function renderOutcome(d){
-  if(d.status==="placed"){ addBanner("good","✓ Order placed."+(d.total?" Total $"+esc(d.total)+".":"")+(d.confirmation?" Confirmation: "+esc(d.confirmation):"")); }
-  else if(d.status==="placed_unconfirmed"){ addBanner("warn","✓ Order submitted (confirmation not captured) — verify it in HEB order history."+(d.total?" ~$"+esc(d.total):"")); }
-  else if(d.status==="dry_run"){ addBanner("blue","🧪 "+esc(d.note||"Rehearsed, not charged.")+(d.total?" Would be $"+esc(d.total)+".":"")); }
-  else if(d.status==="duplicate_skipped"){ addBanner("warn","⏭ "+esc(d.reason||"An identical order was just placed — not charged again.")); }
-  else if(d.status==="blocked"){ addBanner("bad","⛔ Blocked by your policy: "+esc(d.reason||"")); }
-  else if(d.status==="aborted"){ addBanner("bad","✕ Aborted: "+esc(d.reason||"total mismatch")); }
-  else if(d.status==="error"){ addBanner("bad","⚠ "+esc(d.reason||"error")); }
+  const map={placed:["good",I.check,"<b>Order placed.</b> "+(d.total?money(d.total)+". ":"")+(d.confirmation?"Confirmation "+esc(d.confirmation):"")],
+    placed_unconfirmed:["warn",I.check,"<b>Order submitted.</b> Confirmation not captured — verify in H-E-B order history."+(d.total?" ~"+money(d.total):"")],
+    dry_run:["info",I.flask,"<b>Rehearsed, not charged.</b> "+(d.total?"Would be "+money(d.total)+".":"(dry-run mode)")],
+    duplicate_skipped:["warn",I.shield,esc(d.reason||"An identical order was just placed — not charged again.")],
+    blocked:["bad",I.ban,"<b>Blocked by your policy.</b> "+esc(d.reason||"")],
+    aborted:["bad",I.alert,"<b>Aborted.</b> "+esc(d.reason||"total mismatch")],
+    error:["bad",I.alert,esc(d.reason||"Something went wrong.")]};
+  const[c,ic,html]=map[d.status]||map.error;elc("out "+c,ic+"<div>"+html+"</div>");
 }
+setInterval(()=>document.querySelectorAll("[data-exp]").forEach(e=>e.textContent=relExpiry(e.getAttribute("data-exp"))),30000);
 
-async function send(){
-  const t = $("#input").value.trim(); if(!t || busy) return;
-  $("#input").value=""; addUser(t); setBusy(true);
-  try{ await streamSSE("/api/chat", {message:t, conversation_id:CID, model:MODEL}, makeHandlers()); }
-  finally{ setBusy(false); }
+/* ---- empty state + suggestions ---- */
+const SUGS=["Reorder my usuals","What's running low?","Plan dinner for 4","Add my usual water"];
+function renderEmpty(){
+  if(log.children.length)return;
+  const e=document.createElement("div");e.className="empty";
+  e.innerHTML='<div class="em-mark">'+I.leaf+'</div><h2>What can I get you?</h2>'+
+    '<p>Describe a meal or list items — I’ll build the cart, find a pickup time, and check before anything’s charged.</p>';
+  log.appendChild(e);
+  renderSuggest();
 }
-async function approve(approval_id){
-  setBusy(true);
-  try{ await streamSSE("/api/approve", {approval_id, conversation_id:CID, model:MODEL}, makeHandlers()); }
-  finally{ setBusy(false); }
+function renderSuggest(){const s=$("#suggest");s.innerHTML="";SUGS.forEach(t=>{const b=document.createElement("button");b.className="sg";b.textContent=t;b.onclick=()=>send(t);s.appendChild(b);});}
+function clearSuggest(){$("#suggest").innerHTML="";}
+
+/* ---- send / approve ---- */
+async function send(text){
+  const t=(text!=null?text:$("#input").value).trim();if(!t||busy)return;
+  const em=log.querySelector(".empty");if(em)em.remove();clearSuggest();
+  $("#input").value="";autoGrow();addUser(t);setBusy(true);showTyping();
+  try{await streamSSE("/api/chat",{message:t,conversation_id:CID,model:MODEL},makeHandlers());}finally{setBusy(false);}
 }
+async function approve(id){setBusy(true);showTyping();
+  try{await streamSSE("/api/approve",{approval_id:id,conversation_id:CID,model:MODEL},makeHandlers());}finally{setBusy(false);}}
 
-$("#send").onclick = send;
-$("#input").addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); } });
-$("#newchat").onclick = ()=>{ CID=(crypto.randomUUID?crypto.randomUUID():String(Date.now())).replace(/[^a-z0-9-]/gi,"").slice(0,16); localStorage.setItem("gw_cid",CID); log.innerHTML=""; addBanner("blue","New conversation started. Saved preferences still apply."); };
+function autoGrow(){const i=$("#input");i.style.height="auto";i.style.height=Math.min(i.scrollHeight,140)+"px";}
+$("#input").addEventListener("input",autoGrow);
+$("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}});
+$("#send").onclick=()=>send();
+$("#newchat").onclick=()=>{CID=newId();localStorage.setItem("gw_cid",CID);log.innerHTML="";renderEmpty();};
 
-initConfig().then(refreshStatus);
-setInterval(refreshStatus, 30000);
+initConfig().then(refreshStatus).then(renderEmpty);
+setInterval(refreshStatus,30000);
 </script>
 </body>
 </html>
