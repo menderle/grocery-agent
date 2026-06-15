@@ -191,6 +191,17 @@
   .srow:last-child{border-bottom:0} .srow>span:first-child{color:var(--text-2)} .srow .val{display:inline-flex;align-items:center;gap:6px}
   .sheet-btn{width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:11px;padding:13px;font-size:15px;font-weight:500;cursor:pointer}
   .sheet-btn:active{transform:scale(.99)}
+  .seg{display:flex;flex-direction:column;gap:7px}
+  .seg button{text-align:left;background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 13px;font-size:14px;cursor:pointer;transition:background .12s}
+  .seg button.on{border-color:var(--accent);background:var(--accent);color:var(--on-accent);font-weight:500}
+  .shint{margin:8px 2px 0;font-size:11.5px;color:var(--text-3);line-height:1.4}
+  .faq{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .faq details{border-bottom:1px solid var(--border)} .faq details:last-child{border-bottom:0}
+  .faq summary{padding:11px 13px;font-size:14px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary::after{content:"+";color:var(--text-3);font-size:17px;flex:none}
+  .faq details[open] summary::after{content:"–"}
+  .faq p{margin:0;padding:0 13px 12px;font-size:13px;color:var(--text-2);line-height:1.5}
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -233,6 +244,24 @@
         <div class="srow"><span>H-E-B session</span><span class="val"><span class="dot" id="heb-dot"></span><span id="heb-txt">—</span></span></div>
         <div class="srow"><span>Spent · last 7 days</span><span id="s-spend">—</span></div>
         <div class="srow"><span>Store</span><span>Burnet Rd · 202</span></div>
+      </div>
+      <div class="sfield"><label>When you order</label>
+        <div class="seg" id="autonomy">
+          <button type="button" data-mode="approve">Ask me to approve each order</button>
+          <button type="button" data-mode="auto_under_threshold">Auto-place small orders, ask for big ones</button>
+          <button type="button" data-mode="full_auto">Place orders automatically</button>
+        </div>
+        <p class="shint">Spend limits always apply — orders over your caps are blocked in every mode.</p>
+      </div>
+      <div class="sfield"><label>Help</label>
+        <div class="faq">
+          <details><summary>Update my payment card</summary><p>Your prepaid card is saved on your H-E-B account. Change it on heb.com or in the H-E-B app — the agent always uses your account's default card. (The web chat can't change payment methods, by design.)</p></details>
+          <details><summary>Change my store</summary><p>Set your curbside / home store in the H-E-B app or on heb.com. The agent orders from your account's store.</p></details>
+          <details><summary>Save a “usual” item</summary><p>Just tell the agent, e.g. “remember my usual water is the H-E-B 1877 12-pack.” It reuses it next time — here and in Claude.</p></details>
+          <details><summary>Change spend limits</summary><p>Per-order, weekly, and monthly caps always block over-limit orders. Adjust them via the Claude connector (“set my weekly limit to $250”) or in config/policy.yaml on the host.</p></details>
+          <details><summary>Turn on real ordering</summary><p>The app runs in Test mode (dry-run) — it rehearses checkout without charging. To place real orders, disable test mode on the host (HEB_CHECKOUT_DRY_RUN=false, then restart).</p></details>
+          <details><summary>“H-E-B signed out” or no prices</summary><p>Your H-E-B login lives in a browser on the host. If searches return no prices or it shows “signed out,” re-open the parked Chrome and sign in to heb.com again.</p></details>
+        </div>
       </div>
       <button class="sheet-btn" id="newchat">New conversation</button>
     </div>
@@ -336,6 +365,7 @@ async function refreshStatus(){
     $("#heb-txt").textContent=s.heb_session_present?"Connected":"Signed out";
     $("#s-spend").textContent="$"+(s.spent_last_7_days??0);
     $("#store").textContent="Burnet Rd · H-E-B";
+    document.querySelectorAll("#autonomy button").forEach(b=>b.classList.toggle("on",b.dataset.mode===s.policy_mode));
   }catch(e){}
 }
 const TAG={sonnet:"fast",opus:"most capable",haiku:"cheapest"};
@@ -415,7 +445,7 @@ const SUGS=["Reorder my usuals","What's running low?","Plan dinner for 4","Add m
 function renderEmpty(){if(log.children.length)return;
   const e=document.createElement("div");e.className="empty";
   e.innerHTML='<div class="em-mark">'+I.leaf+'</div><h2>What can I get you?</h2>'+
-    '<p>Describe a meal or list items — I’ll build the cart, find a pickup time, and check with you before anything’s charged.</p>';
+    '<p>Name a meal or a few items — I’ll handle the rest.</p>';
   log.appendChild(e);renderSuggest();}
 function renderSuggest(){const s=$("#suggest");s.innerHTML="";SUGS.forEach(t=>{const b=document.createElement("button");b.className="sg";b.textContent=t;b.onclick=()=>send(t);s.appendChild(b);});}
 function clearSuggest(){$("#suggest").innerHTML="";}
@@ -442,6 +472,12 @@ const sheet=$("#sheet"), closeSheet=()=>{sheet.hidden=true;};
 $("#gear").onclick=()=>{sheet.hidden=false;};
 $("#sheet-close").onclick=closeSheet; $("#sheet-bg").onclick=closeSheet;
 $("#newchat").onclick=()=>{closeSheet();if(busy&&ac)ac.abort();CID=newId();localStorage.setItem("gw_cid",CID);log.innerHTML="";renderEmpty();};
+document.querySelectorAll("#autonomy button").forEach(btn=>btn.onclick=async()=>{
+  const mode=btn.dataset.mode;
+  if(mode==="full_auto"&&!confirm("Place orders automatically without asking each time? Your spend limits still apply, and Test mode still blocks real charges."))return;
+  try{await fetch("/api/settings",{method:"POST",cache:"no-store",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify({mode})});}catch(e){}
+  refreshStatus();
+});
 
 initConfig().then(refreshStatus).then(renderEmpty);
 setInterval(refreshStatus,30000);

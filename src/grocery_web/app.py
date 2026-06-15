@@ -109,6 +109,24 @@ async def api_status(request):
     }, headers=NOSTORE)
 
 
+async def api_settings(request):
+    """Human-initiated settings change (autonomy mode). NOT reachable by the agent — the LLM
+    tool denylist still blocks set_policy; this is an explicit, token-gated UI action."""
+    try:
+        body = await _read_json(request)
+    except (json.JSONDecodeError, ValueError):
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400, headers=NOSTORE)
+    mode = body.get("mode")
+    if mode not in ("approve", "auto_under_threshold", "full_auto"):
+        return JSONResponse({"error": "invalid mode"}, status_code=400, headers=NOSTORE)
+    from heb_checkout import policy
+    try:
+        pol = policy.update("mode", mode)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400, headers=NOSTORE)
+    return JSONResponse({"mode": pol.get("mode")}, headers=NOSTORE)
+
+
 async def health(request):
     from heb_checkout import config as core
     auth = core.auth_state_path()
@@ -210,6 +228,7 @@ def build_app() -> Starlette:
         Route("/health", health),
         Route("/api/config", api_config),
         Route("/api/status", api_status),
+        Route("/api/settings", api_settings, methods=["POST"]),
         Route("/api/chat", api_chat, methods=["POST"]),
         Route("/api/approve", api_approve, methods=["POST"]),
         Mount("/static", app=StaticFiles(directory=str(STATIC)), name="static"),
