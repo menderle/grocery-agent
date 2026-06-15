@@ -30,20 +30,27 @@ The gateway/connector keep using port **8787**; the web UI uses **8788** — the
 
 - **Streaming chat** with the full agent: meal/headcount reasoning, search, cart, coupons,
   slots, preview, and policy-gated checkout.
-- **Model picker** (top right) — switch between **Sonnet 4.6** (fast/cheap, default),
-  **Opus 4.8** (most capable), and **Haiku 4.5** per conversation. Set the default and the
-  visible set with `GROCERY_WEB_MODEL` / `GROCERY_WEB_MODELS` in `.env`.
-- **Memory** — the agent uses `recall_item`/`get_preferences` to reuse your usual picks
-  ("add my usual water" → your saved SKU) and `remember_item` when you choose a product.
-  This memory is stored at the gateway level (`data/preferences.json`), so it works in the
-  **Claude connector too** — teach it once, recall it anywhere.
-- **Approval gate in the UI** — when an order needs sign-off, the chat shows the cart total
-  and an **Approve & place order** button. Clicking it calls `place_order` with the approval
+- **Settings sheet (the gear, top-right)** — holds the **model picker** (Sonnet 4.6 default /
+  Opus 4.8 / Haiku 4.5, per conversation; defaults via `GROCERY_WEB_MODEL` /
+  `GROCERY_WEB_MODELS`), a **status panel** (Safety, Autonomy, H-E-B session, 7-day spend,
+  Store), an **autonomy control**, a **Help/FAQ**, and **New conversation**.
+- **Autonomy control ("When you order")** — choose *Ask me to approve each order* (default),
+  *Auto-place small orders, ask for big ones*, or *Place orders automatically*. This sets your
+  policy mode via the token-gated `POST /api/settings`. Spend caps still hard-block over-limit
+  orders in every mode, and Test mode (dry-run) still gates real charges.
+- **Memory** — the agent uses `recall_item` / `get_preferences` to reuse your usual picks
+  ("add my usual water" → your saved SKU) and `remember_item` / `forget_item` /
+  `add_staple` / `remove_staple` to learn them. Stored at the gateway level
+  (`data/preferences.json`), so it works in the **Claude connector too** — teach it once,
+  recall it anywhere.
+- **Approval gate in the UI** — when an order needs sign-off, the chat shows the itemized cart
+  + total and an **Approve & place** button. Clicking it calls `place_order` with the approval
   id directly (one click → exactly one order), then the agent confirms the outcome.
 - **Outcome banners** — green *placed*, amber *placed (unconfirmed — verify in HEB history)*,
   blue *dry-run rehearsed, not charged*, red *blocked by policy* / *aborted*.
-- **Status header** — a **DRY-RUN / LIVE** badge, the policy mode, and rolling 7-day spend,
-  so you always see whether real money can move. Honors `HEB_CHECKOUT_DRY_RUN` from `.env`.
+- **Header** — shows your store and a prominent **DRY-RUN / LIVE** badge (LIVE turns the app
+  chrome red) so the real-money state is always visible. Policy mode + 7-day spend live in the
+  settings sheet. Honors `HEB_CHECKOUT_DRY_RUN` from `.env`.
 - **Conversation memory** — chat threads are saved per browser to
   `data/web-conversations/` (gitignored), so a reload continues the same thread.
 
@@ -51,11 +58,13 @@ The gateway/connector keep using port **8787**; the web UI uses **8788** — the
 
 - The web UI calls the **same** policy/approval/audit/checkout code as Claude. Spend caps,
   approval modes, quiet hours, the >10% overshoot abort, and dry-run all apply identically.
-- **The web chat cannot change policy or payment methods.** `set_policy`,
-  `update_payment_card`, and `remove_payment_card` are withheld from the autonomous web
-  agent (`GROCERY_WEB_TOOL_DENY`) so prompt-injected tool content (e.g. a crafted product
-  name) can't raise your own spend caps or swap your card. Change policy via the Claude
-  connector (human-in-the-loop) or by editing `config/policy.yaml`.
+- **The autonomous agent cannot change policy or payment methods.** `set_policy`,
+  `update_payment_card`, and `remove_payment_card` are *always* withheld from the web agent
+  loop (a hardcoded floor — `GROCERY_WEB_TOOL_DENY` can only add more) so prompt-injected tool
+  content (e.g. a crafted product name) can't raise your spend caps or swap your card. You, the
+  human, can still set the **autonomy mode** from the settings sheet (token-gated
+  `/api/settings`); spend caps and dry-run stay in force. Change spend-limit *amounts* via the
+  Claude connector ("set my weekly limit to $250") or `config/policy.yaml`.
 - A **cross-process lock** (`data/.checkout.lock`, see `src/heb_checkout/locking.py`,
   acquired off the event loop) serializes checkout, so the web UI and the Claude connector
   can never double-place an order or consume one approval twice.
@@ -66,27 +75,35 @@ The gateway/connector keep using port **8787**; the web UI uses **8788** — the
 ## Remote access from your phone (private — not public)
 
 The web app self-hosts on your Mac (it needs the live HEB browser session and your
-residential IP — it cannot run on a serverless host). To reach it from your phone, use
-**Tailscale Serve** (private to your tailnet), **not** Funnel (public):
+residential IP — it cannot run on a serverless host). To reach it from your phone, put both
+devices on your **Tailscale tailnet** (install the Tailscale app on the phone, sign in to the
+same account) and bind the app to the tailnet interface:
 
 ```sh
-# set a token first so even tailnet devices must present it
-echo 'WEB_AUTH_TOKEN=<long-random-string>' >> .env
-make web
-
-# expose to YOUR devices only, over the encrypted tailnet (private):
-tailscale serve --bg 8788
+echo 'WEB_AUTH_TOKEN=<long-random-string>' >> .env   # required for any non-loopback access
+echo 'WEB_BIND=0.0.0.0' >> .env                       # listen on the tailnet interface too
+# restart: launchctl unload/load the web job, or re-run `make web`
 ```
 
-Then open the Tailscale URL on your phone with the token once:
-`https://<your-machine>.<tailnet>.ts.net/?token=<long-random-string>` — the page stores the
-token and uses it for all calls. This stays private to devices logged into your tailnet; it
-is never exposed to the public internet.
+Then open this on the phone (find the Mac's tailnet IP with `tailscale ip -4`):
 
+    http://<mac-tailnet-ip>:8788/?token=<your-token>
+
+The page saves the token (after that the bare `http://<ip>:8788` works) and sends it as an
+`Authorization: Bearer` header on every API call. Traffic rides Tailscale's encrypted tunnel,
+so plain `http` to the `100.x` address is private — never on the public internet. (Safari may
+label the IP "Not secure"; that's expected and fine on a tailnet.)
+
+> The token is a static secret — treat the `?token=` link like a password (don't paste it into
+> shared chats), and rotate it any time by changing `WEB_AUTH_TOKEN` and restarting.
+>
+> Tip: avoid `tailscale serve`/Funnel for this. Funnel is public, and on a node that already
+> Funnels the Claude connector, a phone can resolve the MagicDNS name to the public ingress —
+> the raw tailnet IP above sidesteps that entirely.
+>
 > Why this differs from the phone **connector**: claude.ai connectors are reached by
-> Anthropic's servers, so that endpoint must be public (hence Tailscale **Funnel** + OAuth).
-> Your own web page is reached by *your* device, so a private tailnet + a static token is
-> simpler and safer — no Google OAuth app, no public origin.
+> Anthropic's servers, so that endpoint must be public (Tailscale **Funnel** + OAuth). Your
+> own web page is reached by *your* device, so a private tailnet + a token is simpler and safer.
 
 ## Always-on (optional)
 
@@ -113,7 +130,8 @@ on iPhone Safari open the URL → Share → **Add to Home Screen**. It then laun
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | **Required.** The web UI's Claude API key (billed per token). |
 | `WEB_PORT` | `8788` | Web UI port (gateway keeps 8787). |
-| `WEB_BIND` | `127.0.0.1` | Bind address; leave local unless fronting with Tailscale. |
+| `WEB_BIND` | `127.0.0.1` | Set `0.0.0.0` for phone access over your tailnet (requires `WEB_AUTH_TOKEN`). |
 | `GROCERY_WEB_MODEL` | `sonnet` | Default model (`sonnet` / `opus` / `haiku`). |
 | `GROCERY_WEB_MODELS` | `sonnet,opus,haiku` | Which models appear in the picker. |
-| `WEB_AUTH_TOKEN` | (unset) | If set, every request needs it (Bearer or `?token=`); for remote access. |
+| `WEB_AUTH_TOKEN` | (unset) | Required for any non-loopback access. Sent as `Authorization: Bearer` (or `?token=` on first load). Rotate by changing it + restarting. |
+| `GROCERY_WEB_TOOL_DENY` | (unset) | Extra tools to hide from the web agent. `set_policy` + wallet tools are **always** denied; this only adds more. |

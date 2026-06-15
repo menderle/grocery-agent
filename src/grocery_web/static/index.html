@@ -243,7 +243,7 @@
         <div class="srow"><span>Autonomy</span><span id="s-mode">—</span></div>
         <div class="srow"><span>H-E-B session</span><span class="val"><span class="dot" id="heb-dot"></span><span id="heb-txt">—</span></span></div>
         <div class="srow"><span>Spent · last 7 days</span><span id="s-spend">—</span></div>
-        <div class="srow"><span>Store</span><span>Burnet Rd · 202</span></div>
+        <div class="srow"><span>Store</span><span id="s-store">—</span></div>
       </div>
       <div class="sfield"><label>When you order</label>
         <div class="seg" id="autonomy">
@@ -354,8 +354,20 @@ function hideTyping(){if(typingEl){typingEl.remove();typingEl=null;}}
 let busy=false,activeApprove=null,ac=null,lastUserText="";
 function setBusy(b){busy=b;const s=$("#send");if(b){s.innerHTML=I.stop;s.classList.add("stop");s.setAttribute("aria-label","Stop");}else{s.innerHTML=I.send;s.classList.remove("stop");s.setAttribute("aria-label","Send");}}
 
+let authBlocked=false;
+function authRequired(){
+  if(authBlocked)return; authBlocked=true;
+  log.innerHTML=""; clearSuggest();
+  const d=document.createElement("div"); d.className="empty";
+  d.innerHTML='<div class="em-mark">'+I.shield+'</div><h2>Sign-in required</h2>'+
+    '<p>Open this app with the full link that includes your access token (…/?token=…). Ask the host to resend it.</p>';
+  log.appendChild(d);
+  $("#send").disabled=true; $("#input").disabled=true; $("#input").placeholder="Locked — open with your token link";
+}
 async function refreshStatus(){
-  try{const s=await(await fetch("/api/status",{cache:"no-store",headers:authHeaders()})).json();
+  try{const res=await fetch("/api/status",{cache:"no-store",headers:authHeaders()});
+    if(res.status===401){authRequired();return;}
+    const s=await res.json();
     const dry=$("#b-dry");
     if(s.dry_run===false){dry.className="pill live";dry.innerHTML=I.alert+"LIVE";document.body.classList.add("live-mode");}
     else{dry.className="pill safe";dry.innerHTML=I.shield+"Dry-run";document.body.classList.remove("live-mode");}
@@ -364,13 +376,16 @@ async function refreshStatus(){
     $("#heb-dot").className="dot "+(s.heb_session_present?"on":"off");
     $("#heb-txt").textContent=s.heb_session_present?"Connected":"Signed out";
     $("#s-spend").textContent="$"+(s.spent_last_7_days??0);
-    $("#store").textContent="Burnet Rd · H-E-B";
+    $("#store").textContent=s.store||"H-E-B";
+    $("#s-store").textContent=s.store||"—";
     document.querySelectorAll("#autonomy button").forEach(b=>b.classList.toggle("on",b.dataset.mode===s.policy_mode));
   }catch(e){}
 }
 const TAG={sonnet:"fast",opus:"most capable",haiku:"cheapest"};
 async function initConfig(){
-  try{const c=await(await fetch("/api/config",{cache:"no-store",headers:authHeaders()})).json();
+  try{const res=await fetch("/api/config",{cache:"no-store",headers:authHeaders()});
+    if(res.status===401){authRequired();return;}
+    const c=await res.json();
     const sel=$("#model");sel.innerHTML="";
     (c.models||[]).forEach(m=>{const o=document.createElement("option");o.value=m.alias;
       o.textContent=m.alias.charAt(0).toUpperCase()+m.alias.slice(1)+(TAG[m.alias]?" · "+TAG[m.alias]:"");sel.appendChild(o);});
@@ -383,7 +398,7 @@ async function streamSSE(url,body,on,signal){
   let res;
   try{res=await fetch(url,{method:"POST",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify(body),signal});}
   catch(e){if(e.name!=="AbortError")on("error",{message:"Couldn't reach the server."});return;}
-  if(!res.ok){on("error",{message:"Server error ("+res.status+")."});return;}
+  if(!res.ok){on("error",{message:res.status===401?"Access expired — reopen the app with your token link.":"Server error ("+res.status+")."});return;}
   const rd=res.body.getReader(),dec=new TextDecoder();let buf="";const RE=/\r\n\r\n|\n\n/;
   try{while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
     let m;while((m=RE.exec(buf))){const fr=buf.slice(0,m.index);buf=buf.slice(m.index+m[0].length);

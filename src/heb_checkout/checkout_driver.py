@@ -1,5 +1,5 @@
 """Drives heb.com checkout with Playwright. Flow verified against the live site
-(2026-06-12), curbside at Burnet Rd:
+(2026-06-12), curbside:
 
   cart → "Choose pickup time" → expand "Scheduled" → pick a slot → "Select this time"
        → "Start checkout" → /precheckout upsell → "Continue"

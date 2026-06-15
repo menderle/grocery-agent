@@ -1,0 +1,18 @@
+{
+  "_comment": "Template. scripts/install.sh generates the real .mcp.json (gitignored) with this machine's absolute paths and your store id.",
+  "mcpServers": {
+    "texas-grocery": {
+      "command": "REPO/scripts/shop-server",
+      "args": [],
+      "env": {}
+    },
+    "heb-checkout": {
+      "command": "REPO/.venv/bin/heb-checkout",
+      "args": [],
+      "env": {
+        "GROCERY_AGENT_HOME": "REPO",
+        "HEB_CHECKOUT_DRY_RUN": "true"
+      }
+    }
+  }
+}

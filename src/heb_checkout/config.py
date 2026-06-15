@@ -6,7 +6,12 @@ from pathlib import Path
 
 
 def agent_home() -> Path:
-    return Path(os.environ.get("GROCERY_AGENT_HOME", "~/Claude/grocery-agent")).expanduser()
+    # Prefer GROCERY_AGENT_HOME; otherwise derive from this file's location so a fresh clone
+    # works anywhere (src/heb_checkout/config.py -> repo root) with no per-user path baked in.
+    env = os.environ.get("GROCERY_AGENT_HOME")
+    if env:
+        return Path(env).expanduser()
+    return Path(__file__).resolve().parents[2]
 
 
 def load_env() -> None:

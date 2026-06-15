@@ -83,7 +83,13 @@ def conversations_dir():
 # full_auto; the wallet mutators change payment methods. Prompt-injected tool content
 # (e.g. a crafted HEB product name) therefore cannot escalate. The Claude connector
 # (human-in-the-loop, real-time) keeps these; only the web loop is denied them.
+# These three are ALWAYS denied to the autonomous web agent — money-safety is enforced in
+# code, so the env var can only ADD denials, never remove this floor (else a friend who set
+# GROCERY_WEB_TOOL_DENY= empty would re-expose policy/wallet mutation to prompt injection).
+MANDATORY_DENY = {"set_policy", "update_payment_card", "remove_payment_card"}
+
+
 def denied_tools() -> set[str]:
-    raw = os.environ.get(
-        "GROCERY_WEB_TOOL_DENY", "set_policy,update_payment_card,remove_payment_card")
-    return {t.strip() for t in raw.split(",") if t.strip()}
+    raw = os.environ.get("GROCERY_WEB_TOOL_DENY", "")
+    extra = {t.strip() for t in raw.split(",") if t.strip()}
+    return MANDATORY_DENY | extra

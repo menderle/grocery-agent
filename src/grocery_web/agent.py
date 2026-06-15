@@ -20,6 +20,7 @@ from heb_checkout.gateway import build_gateway
 from . import config
 
 MAX_TOKENS = 8000
+MAX_TURNS = 24  # hard cap on tool-use rounds per request — bounds per-chat Anthropic spend
 _VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")  # Anthropic tool-name constraint
 
 
@@ -138,7 +139,7 @@ async def run_chat(messages: list, model: str):
     system = _system_prompt(getattr(gw_server, "instructions", None))
     async with Client(gw_server) as gw:
         tools, name_map = await _anthropic_tools(gw)
-        while True:
+        for _turn in range(MAX_TURNS):
             async with client.messages.stream(
                 model=model, max_tokens=MAX_TOKENS, system=system,
                 tools=tools, messages=messages,
@@ -170,6 +171,10 @@ async def run_chat(messages: list, model: str):
                     "is_error": is_error,
                 })
             messages.append({"role": "user", "content": tool_results})
+        # Safety cap reached (runaway tool loop) — stop spending and tell the user.
+        yield {"event": "assistant_delta", "data": {"text": "\n\n_(Stopped after several steps — ask me to continue if needed.)_"}}
+        yield {"event": "assistant_done", "data": {}}
+        yield {"event": "turn_end", "data": {}}
 
 
 async def approve_order(messages: list, approval_id: str, model: str):

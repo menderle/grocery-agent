@@ -15,3 +15,7 @@ __pycache__/
 deploy/cloudflared/credentials*.json
 state/
 config/store.json
+.mcp.json
+dist/
+build/
+*.egg-info/

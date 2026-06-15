@@ -43,6 +43,18 @@ def _safe_cid(cid: str) -> str:
     return (cid or uuid.uuid4().hex[:12])[:64]
 
 
+def _prune_convos(max_age_days: int = 30) -> None:
+    """Best-effort retention sweep so transcripts don't accumulate forever."""
+    import time
+    cutoff = time.time() - max_age_days * 86400
+    try:
+        for p in config.conversations_dir().glob("*.json"):
+            if p.stat().st_mtime < cutoff:
+                p.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _load_convo(cid: str) -> dict:
     path = config.conversations_dir() / f"{cid}.json"
     if path.exists():
@@ -101,11 +113,18 @@ async def api_status(request):
     except Exception:
         mode = None
     auth = core.auth_state_path()
+    try:
+        from heb_checkout.gateway import _store
+        sid, sname = _store()
+        store = f"{sname} · {sid}"
+    except Exception:
+        store = None
     return JSONResponse({
         "dry_run": core.dry_run_default(),
         "heb_session_present": auth.exists(),
         "policy_mode": mode,
         "spent_last_7_days": spent7,
+        "store": store,
     }, headers=NOSTORE)
 
 
@@ -122,8 +141,10 @@ async def api_settings(request):
     from heb_checkout import policy
     try:
         pol = policy.update("mode", mode)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=400, headers=NOSTORE)
+    except Exception:
+        import traceback
+        traceback.print_exc()  # detail to server log; generic message to client
+        return JSONResponse({"error": "could not update settings"}, status_code=500, headers=NOSTORE)
     return JSONResponse({"mode": pol.get("mode")}, headers=NOSTORE)
 
 
@@ -234,6 +255,7 @@ def build_app() -> Starlette:
         Mount("/static", app=StaticFiles(directory=str(STATIC)), name="static"),
     ]
     app = Starlette(routes=routes)
+    _prune_convos()
     token = config.web_auth_token()
     if token:
         app.add_middleware(TokenAuth, token=token)
@@ -251,7 +273,9 @@ def main() -> None:
                  f"127.0.0.1 (see docs/WEB-UI.md).")
     import uvicorn
     print(f"grocery-web → http://{bind}:{port}  (dry-run honored from .env)")
-    uvicorn.run(build_app(), host=bind, port=port)
+    # access_log=False: the auth token can arrive as ?token=… on the initial page load, and
+    # uvicorn's access log would otherwise write it (and the URL) to a world-readable logfile.
+    uvicorn.run(build_app(), host=bind, port=port, access_log=False)
 
 
 if __name__ == "__main__":

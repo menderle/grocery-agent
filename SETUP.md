@@ -71,8 +71,9 @@ a live real browser keeps the session naturally alive; only cold relaunches get 
 1. `zsh scripts/start_parked_chrome.sh` — a real Chrome opens on the HEB login page.
 2. Log in (**check "keep me signed in"**), set your home store, then just **leave the
    window open** (minimized is fine).
-3. The agent syncs cookies from it automatically (`sync_parked_session.py`, run by the
-   heartbeat) — and harvests HEB's current API hashes at the same time.
+3. The agent syncs cookies from it automatically (`sync_parked_session.py`, run every 3
+   minutes by the `com.grocery-agent.session-sync` LaunchAgent, plus the heartbeat every
+   30 min) — and harvests HEB's current API hashes at the same time.
 4. Sanity check in chat: "search HEB for whole milk", "add a gallon to my cart".
 
 If the parked window ever gets logged out or closed, the heartbeat notifies you;

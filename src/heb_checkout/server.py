@@ -8,16 +8,15 @@ Transport: stdio only (local Claude Code / Claude Desktop, or mounted inside
 grocery-gateway). The public, OAuth-secured HTTP endpoint is `grocery-gateway --http`.
 """
 
+import hashlib
+import json
 import os
 import sys
 from datetime import datetime
 
 from fastmcp import FastMCP
 
-import hashlib
-
 from . import approvals, audit, checkout_driver, config, policy, preferences
-from .checkout_driver import parse_dollars
 from .locking import async_checkout_lock
 
 mcp = FastMCP("heb-checkout")
@@ -149,20 +148,22 @@ async def place_order(
             }
 
         dry_run = config.dry_run_default()
-        # Idempotency: for REAL orders, refuse to re-place an identical cart that was just
-        # placed (a confused retry, or a web+connector race that the lock serialized but
-        # would otherwise double-charge). Dry-runs always rehearse.
-        fingerprint = _cart_fingerprint(expected_total, items)
-        if not dry_run:
-            dup = _recent_placed(fingerprint, window_seconds=900)
-            if dup is not None:
-                return {"status": "duplicate_skipped",
-                        "reason": "an identical order was placed moments ago — not charging again",
-                        "confirmation": dup.get("confirmation"),
-                        "placed_at": dup.get("placed_at")}
         rec = audit.new_record("dry_run" if dry_run else "attempt", total=expected_total,
                                fulfillment=fulfillment, slot=slot_text, reason=decision.reason)
         try:
+            # Idempotency: for REAL orders, refuse to re-place an identical cart just placed
+            # (a confused retry, or a web+connector race the lock serialized). Computed inside
+            # the try so a fingerprint error restores the approval rather than burning it.
+            fingerprint = _cart_fingerprint(expected_total, items)
+            if not dry_run:
+                dup = _recent_placed(fingerprint)
+                if dup is not None:
+                    if approved:
+                        approvals.restore(approval)  # nothing placed — keep the yes usable
+                    return {"status": "duplicate_skipped",
+                            "reason": "an identical order was placed moments ago — not charging again",
+                            "confirmation": dup.get("confirmation"),
+                            "placed_at": dup.get("placed_at")}
             result = await checkout_driver.place(
                 fulfillment, slot_text, rec["id"],
                 dry_run=dry_run, max_total=round(expected_total * 1.10, 2),
@@ -201,8 +202,10 @@ def _cart_fingerprint(expected_total, items: list[dict] | None) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def _recent_placed(fingerprint: str, window_seconds: int) -> dict | None:
-    """Most recent placed order with this fingerprint within the window, else None."""
+def _recent_placed(fingerprint: str, window_seconds: int = 900) -> dict | None:
+    """Most recent placed order with this fingerprint within the dedupe window, else None.
+    Unconfirmed placements (money likely moved but we couldn't read confirmation) get a much
+    longer window — those are the ones a confused retry must NOT re-charge."""
     now = datetime.now()
     for r in reversed(audit.placed_orders()):
         if r.get("fingerprint") != fingerprint:
@@ -211,7 +214,8 @@ def _recent_placed(fingerprint: str, window_seconds: int) -> dict | None:
             ts = datetime.fromisoformat(r["placed_at"])
         except (KeyError, TypeError, ValueError):
             continue
-        return r if (now - ts).total_seconds() <= window_seconds else None
+        window = 86400 if r.get("unconfirmed") else window_seconds
+        return r if (now - ts).total_seconds() <= window else None
     return None
 
 

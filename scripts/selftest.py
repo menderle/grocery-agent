@@ -164,6 +164,36 @@ with checkout_lock():                                          # held → must u
 with checkout_lock():
     pass                                                       # re-acquire after release: no deadlock
 
+# --- checkout path smoke: _cart_fingerprint + place_order allow-branch with a stubbed
+#     browser (this would have caught the missing `import json` in server.py). No network. ---
+import asyncio as _aio  # noqa: E402
+import yaml as _yaml  # noqa: E402
+from heb_checkout import server, checkout_driver as _cd  # noqa: E402
+
+_fp = server._cart_fingerprint(12.5, [{"name": "Milk", "quantity": 2}])
+assert isinstance(_fp, str) and len(_fp) == 16, _fp
+assert server._cart_fingerprint(12.5, [{"name": "Milk", "quantity": 2}]) == _fp  # stable
+
+# permissive temp policy so the allow-branch is reached regardless of wall-clock/caps
+_pp = pathlib.Path(tmp, "config", "policy.yaml")
+_pol = _yaml.safe_load(_pp.read_text())
+_pol["mode"] = "full_auto"; _pol.pop("quiet_hours", None)
+_pol["max_orders_per_day"] = 999
+_pol.setdefault("spend_limits", {}).update({"per_order": 100000, "weekly": 100000, "monthly": 100000})
+_pp.write_text(_yaml.safe_dump(_pol))
+for _f in pathlib.Path(tmp, "data/orders").glob("*.json"):
+    _f.unlink()
+
+
+async def _fake_place(fulfillment, slot_text, order_id, dry_run, max_total):
+    return {"status": "placed", "estimated_total": 7.5, "confirmation": "TEST"}
+
+
+_cd.place = _fake_place
+_res = _aio.run(server.place_order(7.5, items=[{"name": "Milk", "quantity": 2}]))
+assert _res.get("status") == "placed", _res
+assert any(r.get("kind") == "placed" and r.get("fingerprint") for r in audit.all_records()), "placed record missing fingerprint"
+
 # --- new sources gate correctly when unconfigured ---
 result = lists.read_all()
 assert "todoist" not in result["sources"] and "notion" not in result["sources"]
